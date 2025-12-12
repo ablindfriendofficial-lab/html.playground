@@ -4,10 +4,10 @@
 // इस कोड को इस्तेमाल करने के लिए आपको कोई Environment Variable सेट नहीं करना है।
 // (No Environment Variables needed for this file.)
 
-// 1. Project URL (आपके द्वारा इमेज से प्राप्त मान)
+// 1. Project URL (आपके द्वारा दिया गया मान)
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
 
-// 2. Anon Public Key (आपके द्वारा इमेज से प्राप्त मान)
+// 2. Anon Public Key (आपके द्वारा दिया गया मान)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
 
 
@@ -69,11 +69,10 @@ const deleteProjectNameDisplay = document.getElementById('delete-project-name');
 
 async function initSupabase() {
     try {
-        // 1. Initialize Supabase Client
-        // We use the client created globally by the CDN script: `window.supabase.createClient`
+        // 1. Initialize Supabase Client with hardcoded keys
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        // 2. Perform Anonymous Sign-in (सबसे आसान ऑथेंटिकेशन)
+        // 2. Perform Anonymous Sign-in 
         const { data, error } = await supabase.auth.signInAnonymously();
 
         if (error) throw error;
@@ -87,6 +86,7 @@ async function initSupabase() {
 
     } catch (error) {
         console.error("Supabase initialization failed:", error.message);
+        // Display generic failure message
         document.getElementById('loading-spinner').textContent = "❌ Init Failed";
     }
 }
@@ -128,7 +128,9 @@ async function fetchProjects() {
         .order('created_at', { ascending: false });
 
     if (error) {
-        console.error("Error fetching projects:", error);
+        // RLS error is often caught here if policies are wrong
+        console.error("Error fetching projects. Check Supabase RLS policies for 'projects' table:", error);
+        document.getElementById('file-count').textContent = "ERROR: Cannot fetch projects. Check Supabase policies.";
         return;
     }
 
