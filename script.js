@@ -1,14 +1,14 @@
 // Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
 // --- SUPABASE CONFIGURATION ---
-// IMPORTANT: इस कोड को इस्तेमाल करने के लिए आपको नीचे 'YOUR_LONG_ANON_KEY_HERE' को
-// अपनी असली Supabase Anon Public Key से बदलना होगा।
+// इस कोड को इस्तेमाल करने के लिए आपको कोई Environment Variable सेट नहीं करना है।
+// (No Environment Variables needed for this file.)
 
 // 1. Project URL (आपके द्वारा दिया गया मान)
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
 
-// 2. Anon Public Key (!!! आपको यह मान बदलना होगा !!!)
-const SUPABASE_ANON_KEY = 'YOUR_LONG_ANON_KEY_HERE'; 
+// 2. Anon Public Key (आपके द्वारा दिया गया मान)
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
 
 
 let supabase = null;
@@ -68,17 +68,12 @@ const deleteProjectNameDisplay = document.getElementById('delete-project-name');
 // --- INITIALIZATION ---
 
 async function initSupabase() {
-    // Final check for the placeholder key
-    if (SUPABASE_ANON_KEY === 'YOUR_LONG_ANON_KEY_HERE') {
-        console.error("Supabase configuration missing! Please update script.js with your Anon Public Key.");
-        document.getElementById('loading-spinner').textContent = "❌ KEY MISSING";
-        document.getElementById('file-count').textContent = "ERROR: Please update script.js with your Supabase Public Key.";
-        return;
-    }
+    // This initial check for the placeholder is now removed as we have the actual key.
+    // The connection will proceed directly.
 
     try {
         // 1. Initialize Supabase Client
-        // We use the client created globally by the CDN script: `window.supabase.createClient`
+        // Note: `supabase` is globally available because of the CDN link in index.html
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 2. Perform Anonymous Sign-in (सबसे आसान ऑथेंटिकेशन)
@@ -589,102 +584,4 @@ async function launchProject(projectId, isNewUpload = false) {
     const fullDoc = "<!DOCTYPE html>\n" + finalHtml;
     const htmlBlob = new Blob([fullDoc], { type: 'text/html' });
     const finalUrl = URL.createObjectURL(htmlBlob);
-    objectUrls.push(finalUrl);
-
-    previewProjectName.textContent = projectData.name;
-    switchView('view-workspace');
-    previewFrame.src = finalUrl;
-    
-    fullscreenFrame.src = finalUrl;
-}
-
-function toggleFullscreen(isExiting = false) {
-    if (isExiting) {
-        switchView('view-workspace');
-    } else {
-        switchView('view-fullscreen');
-    }
-}
-
-function refreshPreview() {
-    launchProject(currentProject.id, !currentProject.id);
-}
-
-// --- EDITOR LOGIC ---
-
-async function openEditor(projectId) {
-    const projectData = projectsList.find(p => p.id === projectId);
-    if (!projectData) return;
-
-    currentProject = {
-        id: projectData.id,
-        name: projectData.name,
-        html: projectData.html,
-        css: projectData.css,
-        js: projectData.js
-    };
-
-    editorHtml.value = currentProject.html;
-    editorCss.value = currentProject.css;
-    editorJs.value = currentProject.js;
-    editorProjectName.textContent = `Editing: ${currentProject.name}`;
-
-    switchView('view-editor');
-    switchEditorTab('html');
-}
-
-function switchEditorTab(key) {
-    editorTabs.forEach(tab => {
-        if (tab.dataset.tab === key) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
-    });
-    
-    [editorHtml, editorCss, editorJs].forEach(textarea => {
-        if (textarea.dataset.key === key) {
-            textarea.classList.add('active');
-            textarea.focus();
-        } else {
-            textarea.classList.remove('active');
-        }
-    });
-}
-
-// --- UTILITY / VIEW MANAGEMENT ---
-
-const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay];
-
-function switchView(viewId) {
-    allViews.forEach(el => {
-        el.classList.remove('active');
-        if (el.id === 'save-modal-overlay' || el.id === 'delete-modal-overlay') {
-            el.style.display = 'none'; 
-        }
-    });
-    
-    const target = document.getElementById(viewId);
-    target.classList.add('active');
-    
-    if (viewId === 'save-modal-overlay' || viewId === 'delete-modal-overlay') {
-         target.style.display = 'flex';
-    }
-}
-
-// Expose functions globally for inline HTML usage
-window.saveProject = saveProject;
-window.confirmSaveProject = confirmSaveProject;
-window.cancelSave = cancelSave;
-window.saveCodeChanges = saveCodeChanges;
-window.launchProject = launchProject;
-window.openEditor = openEditor;
-window.refreshPreview = refreshPreview;
-window.switchView = switchView;
-window.resetUploadState = resetUploadState; 
-window.toggleFullscreen = toggleFullscreen;
-window.deleteProject = deleteProject;
-window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelDelete;
-window.downloadProjectAsZip = downloadProjectAsZip;
-
+    objectUrls.pus
