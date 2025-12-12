@@ -129,7 +129,12 @@ function toggleAuthMode() {
     authMessage.style.display = 'none';
 }
 
-async function handleAuthAction(actionType) {
+/**
+ * Handles both Login and Signup actions based on the current authMode state.
+ * This is the FIX for the button not working.
+ */
+async function handleAuthAction() {
+    const actionType = authMode; // Read the current mode
     const email = authEmail.value;
     const password = authPassword.value;
     authMessage.style.display = 'none';
@@ -773,7 +778,7 @@ window.resetUploadState = resetUploadState;
 window.toggleFullscreen = toggleFullscreen;
 window.deleteProject = deleteProject;
 window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelDelete;
+window.cancelDelete = cancelSave; // Corrected: Should point to cancelDelete or cancelSave if modal is the same
 window.downloadProjectAsZip = downloadProjectAsZip;
 window.handleAuthAction = handleAuthAction;
 window.toggleAuthMode = toggleAuthMode;
