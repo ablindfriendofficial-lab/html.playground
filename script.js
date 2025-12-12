@@ -1,20 +1,15 @@
 // Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
 // --- SUPABASE CONFIGURATION ---
-// Note: This code attempts to read the environment variable directly.
-// The hosting service (like Vercel or Netlify) must expose REACT_APP_... variables.
+// IMPORTANT: इस कोड को इस्तेमाल करने के लिए आपको नीचे 'YOUR_LONG_ANON_KEY_HERE' को
+// अपनी असली Supabase Anon Public Key से बदलना होगा।
 
 // 1. Project URL (आपके द्वारा दिया गया मान)
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
 
-// 2. Anon Public Key (Environment Variable से पढ़ें)
-// The hosting service MUST provide this key in its settings.
-const SUPABASE_ANON_KEY = 'YOUR_LONG_ANON_KEY_HERE'; // Temporary placeholder for safety check
+// 2. Anon Public Key (!!! आपको यह मान बदलना होगा !!!)
+const SUPABASE_ANON_KEY = 'YOUR_LONG_ANON_KEY_HERE'; 
 
-
-// If running in a build environment where process.env is available, use it.
-// For browser-based environments, we stick to the placeholder or use runtime injection.
-// Since the environment variable name is standardized (REACT_APP_), we will rely on the user setting it.
 
 let supabase = null;
 let userId = null; 
@@ -73,25 +68,18 @@ const deleteProjectNameDisplay = document.getElementById('delete-project-name');
 // --- INITIALIZATION ---
 
 async function initSupabase() {
-    let finalAnonKey = SUPABASE_ANON_KEY;
-    
-    // Attempt to retrieve the key from environment variables (browser/build time)
-    // NOTE: In a simple HTML/JS setup, reading process.env is complex. We rely on the user 
-    // setting the value manually in the host settings, which then replaces this key in the deployed file.
-    
-    // For Vercel/Netlify hosting, set the key as: REACT_APP_SUPABASE_ANON_KEY
-    if (finalAnonKey === 'YOUR_LONG_ANON_KEY_HERE') {
-        // This is a safety check: the user MUST replace the placeholder in the deployed file's settings.
-        console.error("Supabase configuration missing! Please set REACT_APP_SUPABASE_ANON_KEY in your hosting environment variables.");
+    // Final check for the placeholder key
+    if (SUPABASE_ANON_KEY === 'YOUR_LONG_ANON_KEY_HERE') {
+        console.error("Supabase configuration missing! Please update script.js with your Anon Public Key.");
         document.getElementById('loading-spinner').textContent = "❌ KEY MISSING";
-        document.getElementById('file-count').textContent = "ERROR: Set REACT_APP_SUPABASE_ANON_KEY in hosting environment variables.";
+        document.getElementById('file-count').textContent = "ERROR: Please update script.js with your Supabase Public Key.";
         return;
     }
 
     try {
         // 1. Initialize Supabase Client
         // We use the client created globally by the CDN script: `window.supabase.createClient`
-        supabase = window.supabase.createClient(SUPABASE_URL, finalAnonKey);
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 2. Perform Anonymous Sign-in (सबसे आसान ऑथेंटिकेशन)
         const { data, error } = await supabase.auth.signInAnonymously();
@@ -132,7 +120,7 @@ function loadProjects() {
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('Realtime subscribed. Initial fetch...');
-                fetchProjects();
+                fetchProjects(); 
             } else {
                  console.log('Realtime subscription status:', status);
             }
@@ -561,4 +549,142 @@ function injectAssets(htmlContent, contentMap) {
             if (matchUrl) {
                 el.setAttribute(attr, matchUrl);
             } else {
-                console.warn(`[Asset Injector] Asset not found in saved content: "
+                console.warn(`[Asset Injector] Asset not found in saved content: "${rawVal}"`);
+            }
+        });
+    };
+
+    rewrite('link[href]', 'href');
+    rewrite('script[src]', 'src');
+
+    return doc.documentElement.outerHTML;
+}
+
+
+async function launchProject(projectId, isNewUpload = false) {
+    let projectData;
+
+    if (isNewUpload) {
+        projectData = currentProject;
+    } else {
+        projectData = projectsList.find(p => p.id === projectId);
+        if (!projectData) {
+            console.error("Project not found:", projectId);
+            return;
+        }
+        
+        currentProject = {
+            id: projectData.id,
+            name: projectData.name,
+            html: projectData.html,
+            css: projectData.css,
+            js: projectData.js
+        };
+    }
+    
+    prepareProjectBlobs(projectData);
+
+    const finalHtml = injectAssets(projectData.html, contentBlobMap);
+    
+    const fullDoc = "<!DOCTYPE html>\n" + finalHtml;
+    const htmlBlob = new Blob([fullDoc], { type: 'text/html' });
+    const finalUrl = URL.createObjectURL(htmlBlob);
+    objectUrls.push(finalUrl);
+
+    previewProjectName.textContent = projectData.name;
+    switchView('view-workspace');
+    previewFrame.src = finalUrl;
+    
+    fullscreenFrame.src = finalUrl;
+}
+
+function toggleFullscreen(isExiting = false) {
+    if (isExiting) {
+        switchView('view-workspace');
+    } else {
+        switchView('view-fullscreen');
+    }
+}
+
+function refreshPreview() {
+    launchProject(currentProject.id, !currentProject.id);
+}
+
+// --- EDITOR LOGIC ---
+
+async function openEditor(projectId) {
+    const projectData = projectsList.find(p => p.id === projectId);
+    if (!projectData) return;
+
+    currentProject = {
+        id: projectData.id,
+        name: projectData.name,
+        html: projectData.html,
+        css: projectData.css,
+        js: projectData.js
+    };
+
+    editorHtml.value = currentProject.html;
+    editorCss.value = currentProject.css;
+    editorJs.value = currentProject.js;
+    editorProjectName.textContent = `Editing: ${currentProject.name}`;
+
+    switchView('view-editor');
+    switchEditorTab('html');
+}
+
+function switchEditorTab(key) {
+    editorTabs.forEach(tab => {
+        if (tab.dataset.tab === key) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+    
+    [editorHtml, editorCss, editorJs].forEach(textarea => {
+        if (textarea.dataset.key === key) {
+            textarea.classList.add('active');
+            textarea.focus();
+        } else {
+            textarea.classList.remove('active');
+        }
+    });
+}
+
+// --- UTILITY / VIEW MANAGEMENT ---
+
+const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay];
+
+function switchView(viewId) {
+    allViews.forEach(el => {
+        el.classList.remove('active');
+        if (el.id === 'save-modal-overlay' || el.id === 'delete-modal-overlay') {
+            el.style.display = 'none'; 
+        }
+    });
+    
+    const target = document.getElementById(viewId);
+    target.classList.add('active');
+    
+    if (viewId === 'save-modal-overlay' || viewId === 'delete-modal-overlay') {
+         target.style.display = 'flex';
+    }
+}
+
+// Expose functions globally for inline HTML usage
+window.saveProject = saveProject;
+window.confirmSaveProject = confirmSaveProject;
+window.cancelSave = cancelSave;
+window.saveCodeChanges = saveCodeChanges;
+window.launchProject = launchProject;
+window.openEditor = openEditor;
+window.refreshPreview = refreshPreview;
+window.switchView = switchView;
+window.resetUploadState = resetUploadState; 
+window.toggleFullscreen = toggleFullscreen;
+window.deleteProject = deleteProject;
+window.confirmDelete = confirmDelete;
+window.cancelDelete = cancelDelete;
+window.downloadProjectAsZip = downloadProjectAsZip;
+
