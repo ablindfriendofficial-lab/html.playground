@@ -7,7 +7,7 @@
     <!-- JSZip Library for creating ZIP files -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
-    <!-- Supabase Client Library (यह Firebase को रिप्लेस करता है) -->
+    <!-- Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <!-- CSS फ़ाइल को लिंक करें -->
@@ -15,17 +15,66 @@
 </head>
 <body>
     
-    <!-- LOADING/AUTH SCREEN -->
+    <!-- VIEW 0: LOADING/AUTH SCREEN -->
     <div id="view-loading" class="view-section active center-screen" style="z-index: 100; background: var(--bg-main);">
         <div style="font-size: 1.5rem; color: var(--accent);">
             <span id="loading-spinner">...</span> Initializing App
-            <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 10px;">Connecting to Supabase</p> <!-- मैसेज बदला गया -->
+            <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 10px;">Connecting to Supabase</p> 
+        </div>
+    </div>
+    
+    <!-- VIEW 0.5: AUTHENTICATION SCREEN (LOGIN/SIGNUP) -->
+    <div id="view-auth" class="view-section center-screen">
+        <div class="action-box" id="auth-box">
+            <span class="icon-large">🔑</span>
+            <h2 id="auth-title">Log In to Access Projects</h2>
+            <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 0.9rem;">
+                Enter your email and password.
+            </p>
+            
+            <input type="email" id="auth-email" placeholder="Email" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main); margin-bottom: 10px;">
+            <input type="password" id="auth-password" placeholder="Password" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main); margin-bottom: 15px;">
+            
+            <div id="auth-message" style="color: var(--error); font-size: 0.85rem; margin-bottom: 10px; display: none;"></div>
+            
+            <button class="btn-base btn-primary" id="login-btn" style="width: 100%; justify-content: center;" onclick="handleAuthAction('login')">
+                Log In
+            </button>
+            <button class="btn-base btn-secondary" id="signup-btn" style="width: 100%; justify-content: center;" onclick="handleAuthAction('signup')">
+                Sign Up (New Account)
+            </button>
+            
+            <div style="margin-top: 20px; width: 100%; display: flex; align-items: center; justify-content: center;">
+                <div style="flex-grow: 1; height: 1px; background: var(--border);"></div>
+                <span style="padding: 0 10px; color: var(--text-dim); font-size: 0.9rem;">OR</span>
+                <div style="flex-grow: 1; height: 1px; background: var(--border);"></div>
+            </div>
+
+            <button class="btn-base" style="margin-top: 15px; background-color: #4285F4; color: white; width: 100%; justify-content: center;" onclick="signInWithGoogle()">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo-google.png" alt="Google logo" style="width: 20px; height: 20px; margin-right: 10px;">
+                Continue with Google
+            </button>
+
+            <button class="btn-base" style="margin-top: 20px; background: none; color: var(--text-dim); text-decoration: underline;" onclick="toggleAuthMode()">
+                Switch to <span id="mode-toggle-text">Sign Up</span>
+            </button>
         </div>
     </div>
 
 
     <!-- VIEW 1: UPLOAD SCREEN -->
     <div id="view-upload" class="view-section center-screen">
+        <header class="toolbar">
+            <div class="toolbar-group">
+                <span style="font-weight: 700; font-size: 1.1rem; color: var(--accent);">Welcome, User!</span>
+            </div>
+            <div class="toolbar-group">
+                <button class="btn-base btn-danger" onclick="userSignOut()" style="margin-top: 0; padding: 8px 12px;">
+                    Log Out
+                </button>
+            </div>
+        </header>
+
         <div class="action-box" id="drop-zone">
             <span class="icon-large">📂</span>
             <h2>Upload New Project</h2>
