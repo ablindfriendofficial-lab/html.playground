@@ -1,13 +1,7 @@
 // Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
 // --- SUPABASE CONFIGURATION ---
-// इस कोड को इस्तेमाल करने के लिए आपको कोई Environment Variable सेट नहीं करना है।
-// (No Environment Variables needed for this file.)
-
-// 1. Project URL (आपके द्वारा दिया गया मान)
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
-
-// 2. Anon Public Key (आपके द्वारा दिया गया मान)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
 
 
@@ -233,11 +227,16 @@ function loadProjects() {
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('Realtime subscribed. Initial fetch...');
-                fetchProjects(); 
+                // FIX: Removed fetchProjects() call from SUBSCRIBED status to prevent infinite loading.
+                // The main handleAuthChange will call fetchProjects() manually.
             } else {
                 console.log('Realtime subscription status:', status);
             }
         });
+
+    // 2. Initial fetch: Call fetchProjects directly after setting up the listener
+    // This immediately starts fetching data without waiting for the slow Realtime connection setup.
+    fetchProjects(); 
 }
 
 async function fetchProjects() {
