@@ -37,10 +37,11 @@
             
             <div id="auth-message" style="color: var(--error); font-size: 0.85rem; margin-bottom: 10px; display: none;"></div>
             
-            <button class="btn-base btn-primary" id="login-btn" style="width: 100%; justify-content: center;" onclick="handleAuthAction('login')">
+            <!-- FIX: Added handleAuthAction() which will read the current authMode -->
+            <button class="btn-base btn-primary" id="login-btn" style="width: 100%; justify-content: center;" onclick="handleAuthAction()">
                 Log In
             </button>
-            <button class="btn-base btn-secondary" id="signup-btn" style="width: 100%; justify-content: center;" onclick="handleAuthAction('signup')">
+            <button class="btn-base btn-secondary" id="signup-btn" style="width: 100%; justify-content: center; display: none;" onclick="handleAuthAction()">
                 Sign Up (New Account)
             </button>
             
