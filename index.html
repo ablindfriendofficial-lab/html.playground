@@ -7,7 +7,10 @@
     <!-- JSZip Library for creating ZIP files -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
-    <!-- CSS फ़ाइल को लिंक करें (Link the CSS file) -->
+    <!-- Supabase Client Library (यह Firebase को रिप्लेस करता है) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- CSS फ़ाइल को लिंक करें -->
     <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
@@ -16,7 +19,7 @@
     <div id="view-loading" class="view-section active center-screen" style="z-index: 100; background: var(--bg-main);">
         <div style="font-size: 1.5rem; color: var(--accent);">
             <span id="loading-spinner">...</span> Initializing App
-            <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 10px;">Connecting to Firebase</p>
+            <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 10px;">Connecting to Supabase</p> <!-- मैसेज बदला गया -->
         </div>
     </div>
 
@@ -154,8 +157,8 @@
             <p style="color: var(--text-dim); font-size: 0.9rem; margin-top: 5px; margin-bottom: 15px;">Enter a unique name before saving.</p>
             <input type="text" id="project-name-input" placeholder="e.g., My Awesome Landing Page" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main); margin-bottom: 15px;">
             <div style="display: flex; gap: 10px; width: 100%;">
-                <button class="btn-base btn-secondary" style="flex: 1;" onclick="cancelSave()">Cancel</button>
-                <button class="btn-base btn-success" style="flex: 1;" onclick="confirmSaveProject()">Save</button>
+                <button class="btn-base btn-secondary" onclick="cancelSave()">Cancel</button>
+                <button class="btn-base btn-success" onclick="confirmSaveProject()">Save</button>
             </div>
         </div>
     </div>
@@ -166,13 +169,13 @@
             <h3 style="color: var(--error);">Confirm Deletion</h3>
             <p style="color: var(--text-dim); font-size: 0.9rem; margin-top: 5px; margin-bottom: 20px;">Are you sure you want to delete <strong id="delete-project-name">this project</strong>? This action cannot be undone.</p>
             <div style="display: flex; gap: 10px; width: 100%;">
-                <button class="btn-base btn-secondary" style="flex: 1;" onclick="cancelDelete()">Cancel</button>
-                <button class="btn-base btn-danger" style="flex: 1;" onclick="confirmDelete()">Delete Permanently</button>
+                <button class="btn-base btn-secondary" onclick="cancelDelete()">Cancel</button>
+                <button class="btn-base btn-danger" onclick="confirmDelete()">Delete Permanently</button>
             </div>
         </div>
     </div>
 
-    <!-- JavaScript फ़ाइल को लोड करें (Load the JavaScript file) -->
+    <!-- JavaScript फ़ाइल को लोड करें -->
     <script type="module" src="script.js"></script> 
 </body>
 </html>
