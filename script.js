@@ -131,7 +131,6 @@ function toggleAuthMode() {
 
 /**
  * Handles both Login and Signup actions based on the current authMode state.
- * This is the FIX for the button not working.
  */
 async function handleAuthAction() {
     const actionType = authMode; // Read the current mode
@@ -149,6 +148,7 @@ async function handleAuthAction() {
     if (actionType === 'login') {
         authPromise = supabase.auth.signInWithPassword({ email, password });
     } else if (actionType === 'signup') {
+        // FIX: The user needs to enable Email/Password provider in Supabase Auth settings.
         authPromise = supabase.auth.signUp({ email, password });
     }
 
@@ -778,7 +778,7 @@ window.resetUploadState = resetUploadState;
 window.toggleFullscreen = toggleFullscreen;
 window.deleteProject = deleteProject;
 window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelSave; // Corrected: Should point to cancelDelete or cancelSave if modal is the same
+window.cancelDelete = cancelSave; 
 window.downloadProjectAsZip = downloadProjectAsZip;
 window.handleAuthAction = handleAuthAction;
 window.toggleAuthMode = toggleAuthMode;
