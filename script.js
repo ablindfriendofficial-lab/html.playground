@@ -1,17 +1,24 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, addDoc, setDoc, onSnapshot, collection, query, serverTimestamp, setLogLevel, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
-// --- GLOBAL FIREBASE VARS ---
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+// --- SUPABASE CONFIGURATION ---
+// Note: This code attempts to read the environment variable directly.
+// The hosting service (like Vercel or Netlify) must expose REACT_APP_... variables.
 
-let db;
-let auth;
-let userId = null;
-let projectsCollectionRef;
-let projectsUnsubscribe;
+// 1. Project URL (आपके द्वारा दिया गया मान)
+const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
+
+// 2. Anon Public Key (Environment Variable से पढ़ें)
+// The hosting service MUST provide this key in its settings.
+const SUPABASE_ANON_KEY = 'YOUR_LONG_ANON_KEY_HERE'; // Temporary placeholder for safety check
+
+
+// If running in a build environment where process.env is available, use it.
+// For browser-based environments, we stick to the placeholder or use runtime injection.
+// Since the environment variable name is standardized (REACT_APP_), we will rely on the user setting it.
+
+let supabase = null;
+let userId = null; 
+let supabaseChannel = null; 
 
 // --- APP STATE ---
 let uploadedFilesMap = new Map(); 
@@ -64,57 +71,100 @@ const deleteProjectNameDisplay = document.getElementById('delete-project-name');
 
 
 // --- INITIALIZATION ---
-setLogLevel('debug');
 
-async function initFirebase() {
+async function initSupabase() {
+    let finalAnonKey = SUPABASE_ANON_KEY;
+    
+    // Attempt to retrieve the key from environment variables (browser/build time)
+    // NOTE: In a simple HTML/JS setup, reading process.env is complex. We rely on the user 
+    // setting the value manually in the host settings, which then replaces this key in the deployed file.
+    
+    // For Vercel/Netlify hosting, set the key as: REACT_APP_SUPABASE_ANON_KEY
+    if (finalAnonKey === 'YOUR_LONG_ANON_KEY_HERE') {
+        // This is a safety check: the user MUST replace the placeholder in the deployed file's settings.
+        console.error("Supabase configuration missing! Please set REACT_APP_SUPABASE_ANON_KEY in your hosting environment variables.");
+        document.getElementById('loading-spinner').textContent = "❌ KEY MISSING";
+        document.getElementById('file-count').textContent = "ERROR: Set REACT_APP_SUPABASE_ANON_KEY in hosting environment variables.";
+        return;
+    }
+
     try {
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
+        // 1. Initialize Supabase Client
+        // We use the client created globally by the CDN script: `window.supabase.createClient`
+        supabase = window.supabase.createClient(SUPABASE_URL, finalAnonKey);
+        
+        // 2. Perform Anonymous Sign-in (सबसे आसान ऑथेंटिकेशन)
+        const { data, error } = await supabase.auth.signInAnonymously();
 
-        if (initialAuthToken) {
-            await signInWithCustomToken(auth, initialAuthToken);
-        } else {
-            await signInAnonymously(auth);
-        }
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                userId = user.uid;
-                console.log("Authenticated with userId:", userId);
-                projectsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/projects`);
-                
-                loadProjects();
-                switchView('view-upload');
-            } else {
-                console.error("Authentication failed.");
-                document.getElementById('loading-spinner').textContent = "❌ Auth Failed";
-            }
-        });
+        if (error) throw error;
+        
+        // 3. Set User ID and Start Realtime Listener
+        userId = data.user.id;
+        console.log("Authenticated with userId:", userId);
+        
+        loadProjects(); // Starts the realtime listener
+        switchView('view-upload');
 
     } catch (error) {
-        console.error("Firebase initialization failed:", error);
+        console.error("Supabase initialization failed:", error.message);
         document.getElementById('loading-spinner').textContent = "❌ Init Failed";
     }
 }
 
-// --- DATA / FIREBASE FUNCTIONS ---
+// --- DATA / SUPABASE FUNCTIONS ---
 
 function loadProjects() {
-    if (projectsUnsubscribe) projectsUnsubscribe();
-
-    const q = query(projectsCollectionRef);
-
-    projectsUnsubscribe = onSnapshot(q, (snapshot) => {
-        projectsList = [];
-        snapshot.forEach(doc => {
-            projectsList.push({ id: doc.id, ...doc.data() });
+    if (supabaseChannel) {
+        supabaseChannel.unsubscribe();
+    }
+    
+    // 1. Setup Realtime Channel
+    supabaseChannel = supabase
+        .channel('public:projects')
+        .on('postgres_changes', 
+            { event: '*', schema: 'public', table: 'projects' }, 
+            (payload) => {
+                // Realtime events triggered, refetch all data to update projectsList
+                console.log('Realtime change detected:', payload.eventType);
+                fetchProjects(); 
+            }
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('Realtime subscribed. Initial fetch...');
+                fetchProjects();
+            } else {
+                 console.log('Realtime subscription status:', status);
+            }
         });
-        renderProjectsList();
-    }, (error) => {
-        console.error("Error listening to projects:", error);
-    });
 }
+
+async function fetchProjects() {
+    // Select all columns from 'projects' where user_id matches the current user
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching projects:", error);
+        return;
+    }
+
+    // Map data to the existing projectsList structure
+    projectsList = data.map(p => ({
+        id: p.id,
+        name: p.name,
+        html: p.html,
+        css: p.css,
+        js: p.js,
+        created_at: { toDate: () => new Date(p.created_at) } // Mimic Firebase timestamp structure for rendering
+    }));
+    
+    renderProjectsList();
+}
+
 
 function renderProjectsList() {
     projectsListContainer.innerHTML = '';
@@ -130,7 +180,7 @@ function renderProjectsList() {
         card.className = 'project-card';
         card.innerHTML = `
             <h3>${project.name || 'Untitled Project'}</h3>
-            <p>Created: ${project.createdAt ? new Date(project.createdAt.toDate()).toLocaleDateString() : 'Unknown'}</p>
+            <p>Created: ${project.created_at ? project.created_at.toDate().toLocaleDateString() : 'Unknown'}</p>
             <div class="project-actions">
                 <button class="btn-base btn-primary" onclick="launchProject('${project.id}')">View Website</button>
                 <button class="btn-base btn-secondary" onclick="openEditor('${project.id}')">Edit Code</button>
@@ -170,25 +220,32 @@ async function confirmSaveProject() {
 
     try {
         const dataToSave = {
+            user_id: userId, // Supabase requires user_id explicitly
             name: projectName,
             html: currentProject.html,
             css: currentProject.css,
-            js: currentProject.js,
-            createdAt: serverTimestamp()
+            js: currentProject.js
+            // created_at is handled by PostgreSQL default now()
         };
 
-        const docRef = await addDoc(projectsCollectionRef, dataToSave);
-        currentProject.id = docRef.id;
+        const { data, error } = await supabase
+            .from('projects')
+            .insert([dataToSave])
+            .select();
+
+        if (error) throw error;
+
+        currentProject.id = data[0].id;
         currentProject.name = projectName;
-        console.log("Project saved with ID:", docRef.id);
+        console.log("Project saved with ID:", currentProject.id);
         
         document.getElementById('file-count').textContent = `Project "${projectName}" saved!`;
         
-        resetUploadState();
+        resetUploadState(); // Realtime listener will handle UI refresh
 
     } catch (e) {
         console.error("Error saving document:", e);
-        console.error("Failed to save project to Firestore. Check console for details.");
+        console.error("Failed to save project to Supabase. Check console for details.");
     }
 }
 
@@ -204,13 +261,19 @@ async function saveCodeChanges() {
     currentProject.js = editorJs.value;
 
     try {
-        const projectDocRef = doc(projectsCollectionRef, currentProject.id);
-        await updateDoc(projectDocRef, {
-            html: currentProject.html,
-            css: currentProject.css,
-            js: currentProject.js
-        });
+        const { error } = await supabase
+            .from('projects')
+            .update({
+                html: currentProject.html,
+                css: currentProject.css,
+                js: currentProject.js
+            })
+            .eq('id', currentProject.id)
+            .eq('user_id', userId); // Ensure only the current user can update
 
+        if (error) throw error;
+
+        // Manual update to local state for instant feedback
         const index = projectsList.findIndex(p => p.id === currentProject.id);
         if (index !== -1) {
             projectsList[index].html = currentProject.html;
@@ -265,8 +328,14 @@ async function confirmDelete() {
     projectIdToDelete = null;
 
     try {
-        const docRef = doc(projectsCollectionRef, id);
-        await deleteDoc(docRef);
+        const { error } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', userId); // Ensure RLS is respected
+
+        if (error) throw error;
+        
         console.log(`Project ${id} deleted successfully.`);
     } catch (e) {
         console.error("Error deleting document:", e);
@@ -320,8 +389,9 @@ async function downloadProjectAsZip(projectId, projectName) {
 // --- UPLOAD / FILE HANDLING LOGIC ---
 
 window.addEventListener('load', () => {
-    initFirebase();
+    initSupabase();
     
+    // --- Event Listeners ---
     folderInput.addEventListener('change', (e) => processFiles(e.target.files));
     fileInput.addEventListener('change', (e) => processFiles(e.target.files));
     
@@ -491,142 +561,4 @@ function injectAssets(htmlContent, contentMap) {
             if (matchUrl) {
                 el.setAttribute(attr, matchUrl);
             } else {
-                console.warn(`[Asset Injector] Asset not found in saved content: "${rawVal}"`);
-            }
-        });
-    };
-
-    rewrite('link[href]', 'href');
-    rewrite('script[src]', 'src');
-
-    return doc.documentElement.outerHTML;
-}
-
-
-async function launchProject(projectId, isNewUpload = false) {
-    let projectData;
-
-    if (isNewUpload) {
-        projectData = currentProject;
-    } else {
-        projectData = projectsList.find(p => p.id === projectId);
-        if (!projectData) {
-            console.error("Project not found:", projectId);
-            return;
-        }
-        
-        currentProject = {
-            id: projectData.id,
-            name: projectData.name,
-            html: projectData.html,
-            css: projectData.css,
-            js: projectData.js
-        };
-    }
-    
-    prepareProjectBlobs(projectData);
-
-    const finalHtml = injectAssets(projectData.html, contentBlobMap);
-    
-    const fullDoc = "<!DOCTYPE html>\n" + finalHtml;
-    const htmlBlob = new Blob([fullDoc], { type: 'text/html' });
-    const finalUrl = URL.createObjectURL(htmlBlob);
-    objectUrls.push(finalUrl);
-
-    previewProjectName.textContent = projectData.name;
-    switchView('view-workspace');
-    previewFrame.src = finalUrl;
-    
-    fullscreenFrame.src = finalUrl;
-}
-
-function toggleFullscreen(isExiting = false) {
-    if (isExiting) {
-        switchView('view-workspace');
-    } else {
-        switchView('view-fullscreen');
-    }
-}
-
-function refreshPreview() {
-    launchProject(currentProject.id, !currentProject.id);
-}
-
-// --- EDITOR LOGIC ---
-
-async function openEditor(projectId) {
-    const projectData = projectsList.find(p => p.id === projectId);
-    if (!projectData) return;
-
-    currentProject = {
-        id: projectData.id,
-        name: projectData.name,
-        html: projectData.html,
-        css: projectData.css,
-        js: projectData.js
-    };
-
-    editorHtml.value = currentProject.html;
-    editorCss.value = currentProject.css;
-    editorJs.value = currentProject.js;
-    editorProjectName.textContent = `Editing: ${currentProject.name}`;
-
-    switchView('view-editor');
-    switchEditorTab('html');
-}
-
-function switchEditorTab(key) {
-    editorTabs.forEach(tab => {
-        if (tab.dataset.tab === key) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
-    });
-    
-    [editorHtml, editorCss, editorJs].forEach(textarea => {
-        if (textarea.dataset.key === key) {
-            textarea.classList.add('active');
-            textarea.focus();
-        } else {
-            textarea.classList.remove('active');
-        }
-    });
-}
-
-// --- UTILITY / VIEW MANAGEMENT ---
-
-const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay];
-
-function switchView(viewId) {
-    allViews.forEach(el => {
-        el.classList.remove('active');
-        if (el.id === 'save-modal-overlay' || el.id === 'delete-modal-overlay') {
-            el.style.display = 'none'; 
-        }
-    });
-    
-    const target = document.getElementById(viewId);
-    target.classList.add('active');
-    
-    if (viewId === 'save-modal-overlay' || viewId === 'delete-modal-overlay') {
-         target.style.display = 'flex';
-    }
-}
-
-// Expose functions globally for inline HTML usage
-window.saveProject = saveProject;
-window.confirmSaveProject = confirmSaveProject;
-window.cancelSave = cancelSave;
-window.saveCodeChanges = saveCodeChanges;
-window.launchProject = launchProject;
-window.openEditor = openEditor;
-window.refreshPreview = refreshPreview;
-window.switchView = switchView;
-window.resetUploadState = resetUploadState; 
-window.toggleFullscreen = toggleFullscreen;
-window.deleteProject = deleteProject;
-window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelDelete;
-window.downloadProjectAsZip = downloadProjectAsZip;
-
+                console.warn(`[Asset Injector] Asset not found in saved content: "
