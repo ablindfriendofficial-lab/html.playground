@@ -1,6 +1,9 @@
 // Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
 // --- SUPABASE CONFIGURATION ---
+// इस कोड को इस्तेमाल करने के लिए आपको कोई Environment Variable सेट नहीं करना है।
+// (No Environment Variables needed for this file.)
+
 // 1. Project URL (आपके द्वारा दिया गया मान)
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
 
@@ -125,7 +128,7 @@ function toggleAuthMode(setMode) {
     
     authTitle.textContent = authMode === 'login' ? 'Log In to Access Projects' : 'Create New Account';
     
-    // FIX 1: Toggling display and removing/adding the btn-primary/btn-secondary class for correct color change
+    // FIX: Toggling display and removing/adding the btn-primary/btn-secondary class for correct color change
     if (authMode === 'login') {
         // Login should be primary/visible
         loginBtn.style.display = 'flex';
@@ -579,4 +582,221 @@ function validateProject() {
 
     const missing = [];
     if (!hasHTML) missing.push("index.html");
-    if (!hasCSS) missing.push("CSS file (style/index/ma
+    if (!hasCSS) missing.push("CSS file (style/index/main.css)");
+    if (!hasJS) missing.push("JavaScript file (script/index/main.js)");
+
+    actionArea.innerHTML = ''; 
+
+    if (missing.length > 0) {
+        missingList.innerHTML = '';
+        missing.forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            missingList.appendChild(li);
+        });
+        errorDisplay.style.display = 'block';
+    } else {
+        errorDisplay.style.display = 'none';
+        
+        const btnView = document.createElement('button');
+        btnView.className = 'btn-success';
+        btnView.innerHTML = 'View Uploaded Website ▶';
+        btnView.onclick = () => launchProject(null, true);
+        actionArea.appendChild(btnView);
+        
+        const btnSave = document.createElement('button');
+        btnSave.className = 'btn-base btn-primary';
+        btnSave.innerHTML = 'Save Project';
+        btnSave.onclick = saveProject;
+        actionArea.appendChild(btnSave);
+    }
+}
+
+// --- PREVIEW LOGIC ---
+
+const contentBlobMap = new Map();
+
+function prepareProjectBlobs(projectData) {
+    objectUrls.forEach(url => URL.revokeObjectURL(url));
+    objectUrls = [];
+    contentBlobMap.clear();
+
+    if (projectData.css) {
+        const cssBlob = new Blob([projectData.css], { type: 'text/css' });
+        const cssUrl = URL.createObjectURL(cssBlob);
+        objectUrls.push(cssUrl);
+        contentBlobMap.set('style.css', cssUrl);
+        contentBlobMap.set('index.css', cssUrl);
+        contentBlobMap.set('main.css', cssUrl);
+    }
+
+    if (projectData.js) {
+        const jsBlob = new Blob([projectData.js], { type: 'text/javascript' });
+        const jsUrl = URL.createObjectURL(jsBlob);
+        objectUrls.push(jsUrl);
+        contentBlobMap.set('script.js', jsUrl);
+        contentBlobMap.set('index.js', jsUrl);
+        contentBlobMap.set('main.js', jsUrl);
+    }
+}
+
+function injectAssets(htmlContent, contentMap) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, 'text/html');
+
+    const rewrite = (selector, attr) => {
+        doc.querySelectorAll(selector).forEach(el => {
+            let rawVal = el.getAttribute(attr);
+            if (!rawVal) return;
+            
+            const cleanPath = rawVal.split('/').pop();
+            const filenameKey = decodeURIComponent(cleanPath).trim().toLowerCase();
+
+            const matchUrl = contentMap.get(filenameKey);
+
+            if (matchUrl) {
+                el.setAttribute(attr, matchUrl);
+            } else {
+                console.warn(`[Asset Injector] Asset not found in saved content: "${rawVal}"`);
+            }
+        });
+    };
+
+    rewrite('link[href]', 'href');
+    rewrite('script[src]', 'src');
+
+    return doc.documentElement.outerHTML;
+}
+
+
+async function launchProject(projectId, isNewUpload = false) {
+    let projectData;
+
+    if (isNewUpload) {
+        projectData = currentProject;
+    } else {
+        projectData = projectsList.find(p => p.id === projectId);
+        if (!projectData) {
+            console.error("Project not found:", projectId);
+            return;
+        }
+        
+        currentProject = {
+            id: projectData.id,
+            name: projectData.name,
+            html: projectData.html,
+            css: projectData.css,
+            js: projectData.js
+        };
+    }
+    
+    prepareProjectBlobs(projectData);
+
+    const finalHtml = injectAssets(projectData.html, contentBlobMap);
+    
+    const fullDoc = "<!DOCTYPE html>\n" + finalHtml;
+    const htmlBlob = new Blob([fullDoc], { type: 'text/html' });
+    const finalUrl = URL.createObjectURL(htmlBlob);
+    objectUrls.push(finalUrl);
+
+    previewProjectName.textContent = projectData.name;
+    switchView('view-workspace');
+    previewFrame.src = finalUrl;
+    
+    fullscreenFrame.src = finalUrl;
+}
+
+function toggleFullscreen(isExiting = false) {
+    if (isExiting) {
+        switchView('view-workspace');
+    } else {
+        switchView('view-fullscreen');
+    }
+}
+
+function refreshPreview() {
+    launchProject(currentProject.id, !currentProject.id);
+}
+
+// --- EDITOR LOGIC ---
+
+async function openEditor(projectId) {
+    const projectData = projectsList.find(p => p.id === projectId);
+    if (!projectData) return;
+
+    currentProject = {
+        id: projectData.id,
+        name: projectData.name,
+        html: projectData.html,
+        css: projectData.css,
+        js: projectData.js
+    };
+
+    editorHtml.value = currentProject.html;
+    editorCss.value = currentProject.css;
+    editorJs.value = currentProject.js;
+    editorProjectName.textContent = `Editing: ${currentProject.name}`;
+
+    switchView('view-editor');
+    switchEditorTab('html');
+}
+
+function switchEditorTab(key) {
+    editorTabs.forEach(tab => {
+        if (tab.dataset.tab === key) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+    
+    [editorHtml, editorCss, editorJs].forEach(textarea => {
+        if (textarea.dataset.key === key) {
+            textarea.classList.add('active');
+            textarea.focus();
+        } else {
+            textarea.classList.remove('active');
+        }
+    });
+}
+
+// --- UTILITY / VIEW MANAGEMENT ---
+
+const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay, viewAuth];
+
+function switchView(viewId) {
+    allViews.forEach(el => {
+        el.classList.remove('active');
+        if (el.id === 'save-modal-overlay' || el.id === 'delete-modal-overlay') {
+            el.style.display = 'none'; 
+        }
+    });
+    
+    const target = document.getElementById(viewId);
+    target.classList.add('active');
+    
+    if (viewId === 'save-modal-overlay' || viewId === 'delete-modal-overlay') {
+        target.style.display = 'flex';
+    }
+}
+
+// Expose functions globally for inline HTML usage
+window.saveProject = saveProject;
+window.confirmSaveProject = confirmSaveProject;
+window.cancelSave = cancelSave;
+window.saveCodeChanges = saveCodeChanges;
+window.launchProject = launchProject;
+window.openEditor = openEditor;
+window.refreshPreview = refreshPreview;
+window.switchView = switchView;
+window.resetUploadState = resetUploadState; 
+window.toggleFullscreen = toggleFullscreen;
+window.deleteProject = deleteProject;
+window.confirmDelete = confirmDelete;
+window.cancelDelete = cancelSave; 
+window.downloadProjectAsZip = downloadProjectAsZip;
+window.handleAuthAction = handleAuthAction;
+window.toggleAuthMode = toggleAuthMode;
+window.userSignOut = userSignOut;
+window.signInWithGoogle = signInWithGoogle;
+
