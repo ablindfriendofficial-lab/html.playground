@@ -1,9 +1,6 @@
 // Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
 // --- SUPABASE CONFIGURATION ---
-// इस कोड को इस्तेमाल करने के लिए आपको कोई Environment Variable सेट नहीं करना है।
-// (No Environment Variables needed for this file.)
-
 // 1. Project URL (आपके द्वारा दिया गया मान)
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
 
@@ -36,7 +33,7 @@ const viewProjects = document.getElementById('view-projects');
 const viewWorkspace = document.getElementById('view-workspace');
 const viewFullscreen = document.getElementById('view-fullscreen');
 const viewEditor = document.getElementById('view-editor');
-const viewAuth = document.getElementById('view-auth'); // New Auth View
+const viewAuth = document.getElementById('view-auth');
 
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
@@ -80,7 +77,7 @@ const modeToggleText = document.getElementById('mode-toggle-text');
 
 async function initSupabase() {
     try {
-        // 1. Initialize Supabase Client with hardcoded keys
+        // 1. Initialize Supabase Client
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 2. Set up the Authentication Listener
@@ -102,29 +99,55 @@ async function initSupabase() {
 
 function handleAuthChange(session) {
     if (session) {
-        // User is logged in
         userId = session.user.id;
         console.log("User logged in:", userId);
-        loadProjects(); // Load data for the authenticated user
+        loadProjects(); 
         
-        // Update welcome message
         const welcomeText = document.querySelector('#view-upload .toolbar-group span');
         welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
         
-        switchView('view-upload'); // Show the main application view
+        switchView('view-upload'); 
     } else {
-        // User is logged out
         userId = null;
         console.log("User logged out or session expired.");
-        switchView('view-auth'); // Show the login/signup screen
+        // Ensure auth mode starts correctly when showing auth view
+        toggleAuthMode('login'); 
+        switchView('view-auth'); 
     }
 }
 
-function toggleAuthMode() {
-    authMode = authMode === 'login' ? 'signup' : 'login';
+function toggleAuthMode(setMode) {
+    if (setMode) {
+        authMode = setMode;
+    } else {
+        authMode = authMode === 'login' ? 'signup' : 'login';
+    }
+    
     authTitle.textContent = authMode === 'login' ? 'Log In to Access Projects' : 'Create New Account';
-    loginBtn.style.display = authMode === 'login' ? 'flex' : 'none';
-    signupBtn.style.display = authMode === 'signup' ? 'flex' : 'none';
+    
+    // FIX 1: Toggling display and removing/adding the btn-primary/btn-secondary class for correct color change
+    if (authMode === 'login') {
+        // Login should be primary/visible
+        loginBtn.style.display = 'flex';
+        loginBtn.classList.add('btn-primary');
+        loginBtn.classList.remove('btn-secondary');
+        
+        // Signup should be secondary/hidden
+        signupBtn.style.display = 'none';
+        signupBtn.classList.remove('btn-primary');
+        signupBtn.classList.add('btn-secondary');
+    } else { // authMode === 'signup'
+        // Signup should be primary/visible
+        signupBtn.style.display = 'flex';
+        signupBtn.classList.add('btn-primary');
+        signupBtn.classList.remove('btn-secondary');
+        
+        // Login should be secondary/hidden
+        loginBtn.style.display = 'none';
+        loginBtn.classList.remove('btn-primary');
+        loginBtn.classList.add('btn-secondary');
+    }
+    
     modeToggleText.textContent = authMode === 'login' ? 'Sign Up' : 'Log In';
     authMessage.style.display = 'none';
 }
@@ -148,7 +171,6 @@ async function handleAuthAction() {
     if (actionType === 'login') {
         authPromise = supabase.auth.signInWithPassword({ email, password });
     } else if (actionType === 'signup') {
-        // FIX: The user needs to enable Email/Password provider in Supabase Auth settings.
         authPromise = supabase.auth.signUp({ email, password });
     }
 
@@ -159,21 +181,17 @@ async function handleAuthAction() {
         authMessage.style.display = 'block';
         console.error("Auth Error:", error);
     } else if (actionType === 'signup' && !data.user) {
-        // Supabase sends a confirmation email, but user is not immediately logged in
         authMessage.textContent = 'Successfully signed up! Please check your email to confirm your account before logging in.';
         authMessage.style.color = 'var(--success)';
         authMessage.style.display = 'block';
-        toggleAuthMode(); // Switch back to login
+        toggleAuthMode('login'); // Switch back to login mode after successful signup prompt
     }
-    // If login is successful, onAuthStateChange listener handles the switch to 'view-upload'
 }
 
 async function signInWithGoogle() {
-    // Redirects the user to the Google sign-in page
     const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-            // Optional: Redirect the user back to the current page after login
             redirectTo: window.location.origin, 
         }
     });
@@ -183,7 +201,6 @@ async function signInWithGoogle() {
         authMessage.style.display = 'block';
         console.error("Google Auth Error:", error);
     }
-    // If successful, Supabase handles the redirection, and onAuthStateChange handles the state change upon return.
 }
 
 async function userSignOut() {
@@ -191,7 +208,6 @@ async function userSignOut() {
     if (error) {
         console.error("Logout Error:", error);
     }
-    // onAuthStateChange listener handles the switch to 'view-auth'
 }
 
 // --- DATA / SUPABASE FUNCTIONS ---
@@ -203,11 +219,10 @@ function loadProjects() {
     
     // 1. Setup Realtime Channel
     supabaseChannel = supabase
-        .channel(`projects_user_${userId}`) // Channel name tied to user ID
+        .channel(`projects_user_${userId}`)
         .on('postgres_changes', 
             { event: '*', schema: 'public', table: 'projects', filter: `user_id=eq.${userId}` }, 
             (payload) => {
-                // Realtime events triggered, refetch all data to update projectsList
                 console.log('Realtime change detected:', payload.eventType);
                 fetchProjects(); 
             }
@@ -217,13 +232,12 @@ function loadProjects() {
                 console.log('Realtime subscribed. Initial fetch...');
                 fetchProjects(); 
             } else {
-                 console.log('Realtime subscription status:', status);
+                console.log('Realtime subscription status:', status);
             }
         });
 }
 
 async function fetchProjects() {
-    // Select all columns from 'projects' where user_id matches the current user
     const { data, error } = await supabase
         .from('projects')
         .select('*')
@@ -231,7 +245,6 @@ async function fetchProjects() {
         .order('created_at', { ascending: false });
 
     if (error) {
-        // This likely means RLS policy is wrong or the user is not authenticated.
         console.error("Error fetching projects. Check Supabase RLS policies for 'projects' table:", error);
         return;
     }
@@ -263,7 +276,7 @@ function renderProjectsList() {
         card.className = 'project-card';
         card.innerHTML = `
             <h3>${project.name || 'Untitled Project'}</h3>
-            <p>Created: ${project.created_at ? project.created_at.toDate().toLocaleDateString() : 'Unknown'}</p>
+            <p>Created: ${project.createdAt ? project.createdAt.toDate().toLocaleDateString() : 'Unknown'}</p>
             <div class="project-actions">
                 <button class="btn-base btn-primary" onclick="launchProject('${project.id}')">View Website</button>
                 <button class="btn-base btn-secondary" onclick="openEditor('${project.id}')">Edit Code</button>
@@ -351,7 +364,7 @@ async function saveCodeChanges() {
                 js: currentProject.js
             })
             .eq('id', currentProject.id)
-            .eq('user_id', userId); // Ensure only the current user can update
+            .eq('user_id', userId); 
 
         if (error) throw error;
 
@@ -413,7 +426,7 @@ async function confirmDelete() {
             .from('projects')
             .delete()
             .eq('id', id)
-            .eq('user_id', userId); // Ensure RLS is respected
+            .eq('user_id', userId); 
 
         if (error) throw error;
         
@@ -456,7 +469,6 @@ async function downloadProjectAsZip(projectId, projectName) {
         downloadLink.download = `${safeFileName}.zip`;
         
         document.body.appendChild(downloadLink);
-        downloadLink.click();
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(downloadUrl);
         
@@ -467,7 +479,7 @@ async function downloadProjectAsZip(projectId, projectName) {
 }
 
 
-// --- UPLOAD / FILE HANDLING LOGIC (Rest of the logic remains the same) ---
+// --- UPLOAD / FILE HANDLING LOGIC ---
 
 window.addEventListener('load', () => {
     initSupabase();
@@ -567,221 +579,4 @@ function validateProject() {
 
     const missing = [];
     if (!hasHTML) missing.push("index.html");
-    if (!hasCSS) missing.push("CSS file (style/index/main.css)");
-    if (!hasJS) missing.push("JavaScript file (script/index/main.js)");
-
-    actionArea.innerHTML = ''; 
-
-    if (missing.length > 0) {
-        missingList.innerHTML = '';
-        missing.forEach(item => {
-            const li = document.createElement('li');
-            li.textContent = item;
-            missingList.appendChild(li);
-        });
-        errorDisplay.style.display = 'block';
-    } else {
-        errorDisplay.style.display = 'none';
-        
-        const btnView = document.createElement('button');
-        btnView.className = 'btn-success';
-        btnView.innerHTML = 'View Uploaded Website ▶';
-        btnView.onclick = () => launchProject(null, true);
-        actionArea.appendChild(btnView);
-        
-        const btnSave = document.createElement('button');
-        btnSave.className = 'btn-base btn-primary';
-        btnSave.innerHTML = 'Save Project';
-        btnSave.onclick = saveProject;
-        actionArea.appendChild(btnSave);
-    }
-}
-
-// --- PREVIEW LOGIC ---
-
-const contentBlobMap = new Map();
-
-function prepareProjectBlobs(projectData) {
-    objectUrls.forEach(url => URL.revokeObjectURL(url));
-    objectUrls = [];
-    contentBlobMap.clear();
-
-    if (projectData.css) {
-        const cssBlob = new Blob([projectData.css], { type: 'text/css' });
-        const cssUrl = URL.createObjectURL(cssBlob);
-        objectUrls.push(cssUrl);
-        contentBlobMap.set('style.css', cssUrl);
-        contentBlobMap.set('index.css', cssUrl);
-        contentBlobMap.set('main.css', cssUrl);
-    }
-
-    if (projectData.js) {
-        const jsBlob = new Blob([projectData.js], { type: 'text/javascript' });
-        const jsUrl = URL.createObjectURL(jsBlob);
-        objectUrls.push(jsUrl);
-        contentBlobMap.set('script.js', jsUrl);
-        contentBlobMap.set('index.js', jsUrl);
-        contentBlobMap.set('main.js', jsUrl);
-    }
-}
-
-function injectAssets(htmlContent, contentMap) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, 'text/html');
-
-    const rewrite = (selector, attr) => {
-        doc.querySelectorAll(selector).forEach(el => {
-            let rawVal = el.getAttribute(attr);
-            if (!rawVal) return;
-            
-            const cleanPath = rawVal.split('/').pop();
-            const filenameKey = decodeURIComponent(cleanPath).trim().toLowerCase();
-
-            const matchUrl = contentMap.get(filenameKey);
-
-            if (matchUrl) {
-                el.setAttribute(attr, matchUrl);
-            } else {
-                console.warn(`[Asset Injector] Asset not found in saved content: "${rawVal}"`);
-            }
-        });
-    };
-
-    rewrite('link[href]', 'href');
-    rewrite('script[src]', 'src');
-
-    return doc.documentElement.outerHTML;
-}
-
-
-async function launchProject(projectId, isNewUpload = false) {
-    let projectData;
-
-    if (isNewUpload) {
-        projectData = currentProject;
-    } else {
-        projectData = projectsList.find(p => p.id === projectId);
-        if (!projectData) {
-            console.error("Project not found:", projectId);
-            return;
-        }
-        
-        currentProject = {
-            id: projectData.id,
-            name: projectData.name,
-            html: projectData.html,
-            css: projectData.css,
-            js: projectData.js
-        };
-    }
-    
-    prepareProjectBlobs(projectData);
-
-    const finalHtml = injectAssets(projectData.html, contentBlobMap);
-    
-    const fullDoc = "<!DOCTYPE html>\n" + finalHtml;
-    const htmlBlob = new Blob([fullDoc], { type: 'text/html' });
-    const finalUrl = URL.createObjectURL(htmlBlob);
-    objectUrls.push(finalUrl);
-
-    previewProjectName.textContent = projectData.name;
-    switchView('view-workspace');
-    previewFrame.src = finalUrl;
-    
-    fullscreenFrame.src = finalUrl;
-}
-
-function toggleFullscreen(isExiting = false) {
-    if (isExiting) {
-        switchView('view-workspace');
-    } else {
-        switchView('view-fullscreen');
-    }
-}
-
-function refreshPreview() {
-    launchProject(currentProject.id, !currentProject.id);
-}
-
-// --- EDITOR LOGIC ---
-
-async function openEditor(projectId) {
-    const projectData = projectsList.find(p => p.id === projectId);
-    if (!projectData) return;
-
-    currentProject = {
-        id: projectData.id,
-        name: projectData.name,
-        html: projectData.html,
-        css: projectData.css,
-        js: projectData.js
-    };
-
-    editorHtml.value = currentProject.html;
-    editorCss.value = currentProject.css;
-    editorJs.value = currentProject.js;
-    editorProjectName.textContent = `Editing: ${currentProject.name}`;
-
-    switchView('view-editor');
-    switchEditorTab('html');
-}
-
-function switchEditorTab(key) {
-    editorTabs.forEach(tab => {
-        if (tab.dataset.tab === key) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
-    });
-    
-    [editorHtml, editorCss, editorJs].forEach(textarea => {
-        if (textarea.dataset.key === key) {
-            textarea.classList.add('active');
-            textarea.focus();
-        } else {
-            textarea.classList.remove('active');
-        }
-    });
-}
-
-// --- UTILITY / VIEW MANAGEMENT ---
-
-const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay, viewAuth];
-
-function switchView(viewId) {
-    allViews.forEach(el => {
-        el.classList.remove('active');
-        if (el.id === 'save-modal-overlay' || el.id === 'delete-modal-overlay') {
-            el.style.display = 'none'; 
-        }
-    });
-    
-    const target = document.getElementById(viewId);
-    target.classList.add('active');
-    
-    if (viewId === 'save-modal-overlay' || viewId === 'delete-modal-overlay') {
-         target.style.display = 'flex';
-    }
-}
-
-// Expose functions globally for inline HTML usage
-window.saveProject = saveProject;
-window.confirmSaveProject = confirmSaveProject;
-window.cancelSave = cancelSave;
-window.saveCodeChanges = saveCodeChanges;
-window.launchProject = launchProject;
-window.openEditor = openEditor;
-window.refreshPreview = refreshPreview;
-window.switchView = switchView;
-window.resetUploadState = resetUploadState; 
-window.toggleFullscreen = toggleFullscreen;
-window.deleteProject = deleteProject;
-window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelSave; 
-window.downloadProjectAsZip = downloadProjectAsZip;
-window.handleAuthAction = handleAuthAction;
-window.toggleAuthMode = toggleAuthMode;
-window.userSignOut = userSignOut;
-window.signInWithGoogle = signInWithGoogle;
-
+    if (!hasCSS) missing.push("CSS file (style/index/ma
