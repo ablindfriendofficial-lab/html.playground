@@ -27,6 +27,7 @@ let currentProject = {
 };
 let projectsList = []; 
 let projectIdToDelete = null; 
+let authMode = 'login'; // 'login' or 'signup'
 
 // --- DOM Elements ---
 const viewLoading = document.getElementById('view-loading');
@@ -35,6 +36,7 @@ const viewProjects = document.getElementById('view-projects');
 const viewWorkspace = document.getElementById('view-workspace');
 const viewFullscreen = document.getElementById('view-fullscreen');
 const viewEditor = document.getElementById('view-editor');
+const viewAuth = document.getElementById('view-auth'); // New Auth View
 
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
@@ -64,6 +66,15 @@ const projectNameInput = document.getElementById('project-name-input');
 const deleteModalOverlay = document.getElementById('delete-modal-overlay');
 const deleteProjectNameDisplay = document.getElementById('delete-project-name');
 
+// Auth Form Elements
+const authTitle = document.getElementById('auth-title');
+const authEmail = document.getElementById('auth-email');
+const authPassword = document.getElementById('auth-password');
+const authMessage = document.getElementById('auth-message');
+const loginBtn = document.getElementById('login-btn');
+const signupBtn = document.getElementById('signup-btn');
+const modeToggleText = document.getElementById('mode-toggle-text');
+
 
 // --- INITIALIZATION ---
 
@@ -72,23 +83,110 @@ async function initSupabase() {
         // 1. Initialize Supabase Client with hardcoded keys
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        // 2. Perform Anonymous Sign-in 
-        const { data, error } = await supabase.auth.signInAnonymously();
-
-        if (error) throw error;
+        // 2. Set up the Authentication Listener
+        supabase.auth.onAuthStateChange((event, session) => {
+            handleAuthChange(session);
+        });
         
-        // 3. Set User ID and Start Realtime Listener
-        userId = data.user.id;
-        console.log("Authenticated with userId:", userId);
-        
-        loadProjects(); // Starts the realtime listener
-        switchView('view-upload');
+        // 3. Check the initial session status (which triggers the first onAuthStateChange)
+        const { data: { session } } = await supabase.auth.getSession();
+        handleAuthChange(session); // Handle initial state
 
     } catch (error) {
         console.error("Supabase initialization failed:", error.message);
-        // Display generic failure message
         document.getElementById('loading-spinner').textContent = "❌ Init Failed";
     }
+}
+
+// --- AUTH LOGIC ---
+
+function handleAuthChange(session) {
+    if (session) {
+        // User is logged in
+        userId = session.user.id;
+        console.log("User logged in:", userId);
+        loadProjects(); // Load data for the authenticated user
+        
+        // Update welcome message
+        const welcomeText = document.querySelector('#view-upload .toolbar-group span');
+        welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
+        
+        switchView('view-upload'); // Show the main application view
+    } else {
+        // User is logged out
+        userId = null;
+        console.log("User logged out or session expired.");
+        switchView('view-auth'); // Show the login/signup screen
+    }
+}
+
+function toggleAuthMode() {
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    authTitle.textContent = authMode === 'login' ? 'Log In to Access Projects' : 'Create New Account';
+    loginBtn.style.display = authMode === 'login' ? 'flex' : 'none';
+    signupBtn.style.display = authMode === 'signup' ? 'flex' : 'none';
+    modeToggleText.textContent = authMode === 'login' ? 'Sign Up' : 'Log In';
+    authMessage.style.display = 'none';
+}
+
+async function handleAuthAction(actionType) {
+    const email = authEmail.value;
+    const password = authPassword.value;
+    authMessage.style.display = 'none';
+    
+    if (!email || !password) {
+        authMessage.textContent = 'Email and password are required.';
+        authMessage.style.display = 'block';
+        return;
+    }
+
+    let authPromise;
+    if (actionType === 'login') {
+        authPromise = supabase.auth.signInWithPassword({ email, password });
+    } else if (actionType === 'signup') {
+        authPromise = supabase.auth.signUp({ email, password });
+    }
+
+    const { data, error } = await authPromise;
+
+    if (error) {
+        authMessage.textContent = `Error: ${error.message}`;
+        authMessage.style.display = 'block';
+        console.error("Auth Error:", error);
+    } else if (actionType === 'signup' && !data.user) {
+        // Supabase sends a confirmation email, but user is not immediately logged in
+        authMessage.textContent = 'Successfully signed up! Please check your email to confirm your account before logging in.';
+        authMessage.style.color = 'var(--success)';
+        authMessage.style.display = 'block';
+        toggleAuthMode(); // Switch back to login
+    }
+    // If login is successful, onAuthStateChange listener handles the switch to 'view-upload'
+}
+
+async function signInWithGoogle() {
+    // Redirects the user to the Google sign-in page
+    const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            // Optional: Redirect the user back to the current page after login
+            redirectTo: window.location.origin, 
+        }
+    });
+
+    if (error) {
+        authMessage.textContent = `Google Sign-in Error: ${error.message}`;
+        authMessage.style.display = 'block';
+        console.error("Google Auth Error:", error);
+    }
+    // If successful, Supabase handles the redirection, and onAuthStateChange handles the state change upon return.
+}
+
+async function userSignOut() {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+        console.error("Logout Error:", error);
+    }
+    // onAuthStateChange listener handles the switch to 'view-auth'
 }
 
 // --- DATA / SUPABASE FUNCTIONS ---
@@ -100,9 +198,9 @@ function loadProjects() {
     
     // 1. Setup Realtime Channel
     supabaseChannel = supabase
-        .channel('public:projects')
+        .channel(`projects_user_${userId}`) // Channel name tied to user ID
         .on('postgres_changes', 
-            { event: '*', schema: 'public', table: 'projects' }, 
+            { event: '*', schema: 'public', table: 'projects', filter: `user_id=eq.${userId}` }, 
             (payload) => {
                 // Realtime events triggered, refetch all data to update projectsList
                 console.log('Realtime change detected:', payload.eventType);
@@ -128,20 +226,18 @@ async function fetchProjects() {
         .order('created_at', { ascending: false });
 
     if (error) {
-        // RLS error is often caught here if policies are wrong
+        // This likely means RLS policy is wrong or the user is not authenticated.
         console.error("Error fetching projects. Check Supabase RLS policies for 'projects' table:", error);
-        document.getElementById('file-count').textContent = "ERROR: Cannot fetch projects. Check Supabase policies.";
         return;
     }
 
-    // Map data to the existing projectsList structure
     projectsList = data.map(p => ({
         id: p.id,
         name: p.name,
         html: p.html,
         css: p.css,
         js: p.js,
-        created_at: { toDate: () => new Date(p.created_at) } // Mimic Firebase timestamp structure for rendering
+        created_at: { toDate: () => new Date(p.created_at) }
     }));
     
     renderProjectsList();
@@ -174,7 +270,7 @@ function renderProjectsList() {
     });
 }
 
-// --- SAVE/UPLOAD LOGIC ---
+// --- SAVE/UPLOAD LOGIC (Uses authenticated user ID) ---
 
 function saveProject() {
     if (!currentProject.html || !currentProject.css || !currentProject.js) {
@@ -202,12 +298,11 @@ async function confirmSaveProject() {
 
     try {
         const dataToSave = {
-            user_id: userId, // Supabase requires user_id explicitly
+            user_id: userId, // CRUCIAL: Links project to the logged-in user
             name: projectName,
             html: currentProject.html,
             css: currentProject.css,
             js: currentProject.js
-            // created_at is handled by PostgreSQL default now()
         };
 
         const { data, error } = await supabase
@@ -223,7 +318,7 @@ async function confirmSaveProject() {
         
         document.getElementById('file-count').textContent = `Project "${projectName}" saved!`;
         
-        resetUploadState(); // Realtime listener will handle UI refresh
+        resetUploadState(); 
 
     } catch (e) {
         console.error("Error saving document:", e);
@@ -255,7 +350,6 @@ async function saveCodeChanges() {
 
         if (error) throw error;
 
-        // Manual update to local state for instant feedback
         const index = projectsList.findIndex(p => p.id === currentProject.id);
         if (index !== -1) {
             projectsList[index].html = currentProject.html;
@@ -368,7 +462,7 @@ async function downloadProjectAsZip(projectId, projectName) {
 }
 
 
-// --- UPLOAD / FILE HANDLING LOGIC ---
+// --- UPLOAD / FILE HANDLING LOGIC (Rest of the logic remains the same) ---
 
 window.addEventListener('load', () => {
     initSupabase();
@@ -648,7 +742,7 @@ function switchEditorTab(key) {
 
 // --- UTILITY / VIEW MANAGEMENT ---
 
-const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay];
+const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay, viewAuth];
 
 function switchView(viewId) {
     allViews.forEach(el => {
@@ -681,4 +775,8 @@ window.deleteProject = deleteProject;
 window.confirmDelete = confirmDelete;
 window.cancelDelete = cancelDelete;
 window.downloadProjectAsZip = downloadProjectAsZip;
+window.handleAuthAction = handleAuthAction;
+window.toggleAuthMode = toggleAuthMode;
+window.userSignOut = userSignOut;
+window.signInWithGoogle = signInWithGoogle;
 
