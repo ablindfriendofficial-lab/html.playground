@@ -70,7 +70,7 @@ const signupBtn = document.getElementById('signup-btn');
 const modeToggleText = document.getElementById('mode-toggle-text');
 
 
-// --- INITIALIZATION ---
+// --- INITIALIZATION (FIXED LOGIC) ---
 
 async function initSupabase() {
     try {
@@ -78,17 +78,30 @@ async function initSupabase() {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 2. Set up the Authentication Listener
+        // This listener is crucial for automatically picking up session changes 
+        // (like those resulting from email confirmation redirects).
         supabase.auth.onAuthStateChange((event, session) => {
-            handleAuthChange(session);
+            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+                handleAuthChange(session);
+            } else if (event === 'SIGNED_OUT') {
+                handleAuthChange(null);
+            }
         });
         
-        // 3. Check the initial session status (which triggers the first onAuthStateChange)
+        // 3. Immediately check the initial session status (FIX for redirect issue)
+        // This ensures the page processes any auth tokens present in the URL (from email confirmation) 
+        // immediately upon load, without waiting for the slower onAuthStateChange listener's initial call.
         const { data: { session } } = await supabase.auth.getSession();
-        handleAuthChange(session); // Handle initial state
+        if (session) {
+            handleAuthChange(session);
+        } else {
+            // No session found, show auth view
+            handleAuthChange(null);
+        }
 
     } catch (error) {
         console.error("Supabase initialization failed:", error.message);
-        document.getElementById('loading-spinner').textContent = "❌ Init Failed";
+        document.getElementById('loading-spinner').textContent = "❌ शुरू करने में विफल";
     }
 }
 
@@ -103,6 +116,7 @@ function handleAuthChange(session) {
         const welcomeText = document.querySelector('#view-upload .toolbar-group span');
         welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
         
+        // Ensure the view switches to upload only after successful login/confirmation
         switchView('view-upload'); 
     } else {
         userId = null;
@@ -120,32 +134,27 @@ function toggleAuthMode(setMode) {
         authMode = authMode === 'login' ? 'signup' : 'login';
     }
     
-    authTitle.textContent = authMode === 'login' ? 'Log In to Access Projects' : 'Create New Account';
+    authTitle.textContent = authMode === 'login' ? 'प्रोजेक्ट्स एक्सेस करने के लिए लॉग इन करें' : 'नया अकाउंट बनाएँ';
     
-    // FIX: Toggling display and removing/adding the btn-primary/btn-secondary class for correct color change
     if (authMode === 'login') {
-        // Login should be primary/visible
         loginBtn.style.display = 'flex';
         loginBtn.classList.add('btn-primary');
         loginBtn.classList.remove('btn-secondary');
         
-        // Signup should be secondary/hidden
         signupBtn.style.display = 'none';
         signupBtn.classList.remove('btn-primary');
         signupBtn.classList.add('btn-secondary');
     } else { // authMode === 'signup'
-        // Signup should be primary/visible
         signupBtn.style.display = 'flex';
         signupBtn.classList.add('btn-primary');
         signupBtn.classList.remove('btn-secondary');
         
-        // Login should be secondary/hidden
         loginBtn.style.display = 'none';
         loginBtn.classList.remove('btn-primary');
         loginBtn.classList.add('btn-secondary');
     }
     
-    modeToggleText.textContent = authMode === 'login' ? 'Sign Up' : 'Log In';
+    modeToggleText.textContent = authMode === 'login' ? 'साइन अप' : 'लॉग इन';
     authMessage.style.display = 'none';
 }
 
@@ -159,7 +168,7 @@ async function handleAuthAction() {
     authMessage.style.display = 'none';
     
     if (!email || !password) {
-        authMessage.textContent = 'Email and password are required.';
+        authMessage.textContent = 'ईमेल और पासवर्ड आवश्यक हैं।';
         authMessage.style.display = 'block';
         return;
     }
@@ -168,17 +177,25 @@ async function handleAuthAction() {
     if (actionType === 'login') {
         authPromise = supabase.auth.signInWithPassword({ email, password });
     } else if (actionType === 'signup') {
-        authPromise = supabase.auth.signUp({ email, password });
+        // FIX: Added emailRedirectTo option to ensure the user is sent back to the app 
+        // root after confirming the email, allowing the SDK to pick up the token.
+        authPromise = supabase.auth.signUp({ 
+            email, 
+            password,
+            options: {
+                emailRedirectTo: window.location.origin, // Sends user back to root after confirmation
+            }
+        });
     }
 
     const { data, error } = await authPromise;
 
     if (error) {
-        authMessage.textContent = `Error: ${error.message}`;
+        authMessage.textContent = `त्रुटि: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Auth Error:", error);
     } else if (actionType === 'signup' && !data.user) {
-        authMessage.textContent = 'Successfully signed up! Please check your email to confirm your account before logging in.';
+        authMessage.textContent = 'सफलतापूर्वक साइन अप किया गया! लॉग इन करने से पहले अपने अकाउंट की पुष्टि करने के लिए कृपया अपना ईमेल देखें।';
         authMessage.style.color = 'var(--success)';
         authMessage.style.display = 'block';
         toggleAuthMode('login'); // Switch back to login mode after successful signup prompt
@@ -194,7 +211,7 @@ async function signInWithGoogle() {
     });
 
     if (error) {
-        authMessage.textContent = `Google Sign-in Error: ${error.message}`;
+        authMessage.textContent = `Google साइन-इन त्रुटि: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Google Auth Error:", error);
     }
@@ -226,16 +243,13 @@ function loadProjects() {
         )
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-                console.log('Realtime subscribed. Initial fetch...');
-                // FIX: Removed fetchProjects() call from SUBSCRIBED status to prevent infinite loading.
-                // The main handleAuthChange will call fetchProjects() manually.
+                console.log('Realtime subscribed.');
             } else {
                 console.log('Realtime subscription status:', status);
             }
         });
 
     // 2. Initial fetch: Call fetchProjects directly after setting up the listener
-    // This immediately starts fetching data without waiting for the slow Realtime connection setup.
     fetchProjects(); 
 }
 
@@ -257,7 +271,7 @@ async function fetchProjects() {
         html: p.html,
         css: p.css,
         js: p.js,
-        created_at: { toDate: () => new Date(p.created_at) }
+        created_at: { toDate: () => new Date(p.created_at) } 
     }));
     
     renderProjectsList();
@@ -278,12 +292,12 @@ function renderProjectsList() {
         card.className = 'project-card';
         card.innerHTML = `
             <h3>${project.name || 'Untitled Project'}</h3>
-            <p>Created: ${project.createdAt ? project.createdAt.toDate().toLocaleDateString() : 'Unknown'}</p>
+            <p>बनाया गया: ${project.created_at.toDate().toLocaleDateString()}</p>
             <div class="project-actions">
-                <button class="btn-base btn-primary" onclick="launchProject('${project.id}')">View Website</button>
-                <button class="btn-base btn-secondary" onclick="openEditor('${project.id}')">Edit Code</button>
-                <button class="btn-base btn-secondary" onclick="downloadProjectAsZip('${project.id}', '${safeName}')" style="margin-top: 5px; background-color: #0d9488;">Download Zip</button>
-                <button class="btn-base btn-danger" onclick="deleteProject('${project.id}', '${safeName}')" style="margin-top: 10px; padding: 10px 15px;">Delete</button>
+                <button class="btn-base btn-primary" onclick="launchProject('${project.id}')">वेबसाइट देखें</button>
+                <button class="btn-base btn-secondary" onclick="openEditor('${project.id}')">कोड एडिट करें</button>
+                <button class="btn-base btn-secondary" onclick="downloadProjectAsZip('${project.id}', '${safeName}')" style="margin-top: 5px; background-color: #0d9488;">ज़िप डाउनलोड करें</button>
+                <button class="btn-base btn-danger" onclick="deleteProject('${project.id}', '${safeName}')" style="margin-top: 10px; padding: 10px 15px;">डिलीट करें</button>
             </div>
         `;
         projectsListContainer.appendChild(card);
@@ -336,7 +350,7 @@ async function confirmSaveProject() {
         currentProject.name = projectName;
         console.log("Project saved with ID:", currentProject.id);
         
-        document.getElementById('file-count').textContent = `Project "${projectName}" saved!`;
+        document.getElementById('file-count').textContent = `Project "${projectName}" सेव हो गया!`;
         
         resetUploadState(); 
 
@@ -370,6 +384,7 @@ async function saveCodeChanges() {
 
         if (error) throw error;
 
+        // Update the local list
         const index = projectsList.findIndex(p => p.id === currentProject.id);
         if (index !== -1) {
             projectsList[index].html = currentProject.html;
@@ -378,14 +393,14 @@ async function saveCodeChanges() {
         }
 
         console.log("Project changes saved successfully for:", currentProject.name);
-        document.getElementById('editor-project-name').textContent = `${currentProject.name} (Saved!)`;
+        document.getElementById('editor-project-name').textContent = `${currentProject.name} (सेव हो गया!)`;
         setTimeout(() => {
-            document.getElementById('editor-project-name').textContent = `Editing: ${currentProject.name}`;
+            document.getElementById('editor-project-name').textContent = `एडिटिंग: ${currentProject.name}`;
         }, 2000);
         
     } catch (e) {
         console.error("Error saving changes:", e);
-        window.alert("Error saving code changes. Check console for details.");
+        console.error("Error saving code changes. Check console for details.");
     }
 }
 
@@ -471,6 +486,7 @@ async function downloadProjectAsZip(projectId, projectName) {
         downloadLink.download = `${safeFileName}.zip`;
         
         document.body.appendChild(downloadLink);
+        downloadLink.click(); 
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(downloadUrl);
         
@@ -514,9 +530,7 @@ async function processFiles(input) {
         
         if (input instanceof DataTransferItemList) {
             for (let i = 0; i < input.length; i++) {
-                const entry = input[i].webkitGetAsEntry ? input[i].webkitGetAsEntry() : null;
-                if (entry && entry.isFile) newFiles.push(input[i].getAsFile());
-                if (!entry) { 
+                if (input[i].kind === 'file') {
                     const file = input[i].getAsFile();
                     if (file) newFiles.push(file);
                 }
@@ -531,15 +545,20 @@ async function processFiles(input) {
             return new Promise((resolve) => {
                 if (file.name.startsWith('.') || file.name === '.DS_Store') return resolve();
 
-                const filenameKey = file.name.toLowerCase().split('/').pop();
-
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    uploadedFilesMap.set(filenameKey, e.target.result);
-                    resolve();
-                };
-                reader.onerror = () => resolve(); 
-                reader.readAsText(file);
+                const pathSegments = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [file.name];
+                const filenameKey = pathSegments.pop().toLowerCase();
+                
+                if (filenameKey.endsWith('.html') || filenameKey.endsWith('.css') || filenameKey.endsWith('.js')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        uploadedFilesMap.set(filenameKey, e.target.result);
+                        resolve();
+                    };
+                    reader.onerror = () => resolve(); 
+                    reader.readAsText(file);
+                } else {
+                    resolve(); 
+                }
             });
         });
 
@@ -571,7 +590,7 @@ function updateMiniList() {
         miniFileList.appendChild(div);
     });
 
-    fileCountDisplay.textContent = `Files loaded: ${uploadedFilesMap.size}`;
+    fileCountDisplay.textContent = `फ़ाइलें लोड की गईं: ${uploadedFilesMap.size}`;
 }
 
 function validateProject() {
@@ -581,8 +600,8 @@ function validateProject() {
 
     const missing = [];
     if (!hasHTML) missing.push("index.html");
-    if (!hasCSS) missing.push("CSS file (style/index/main.css)");
-    if (!hasJS) missing.push("JavaScript file (script/index/main.js)");
+    if (!hasCSS) missing.push("CSS फ़ाइल (style/index/main.css)");
+    if (!hasJS) missing.push("JavaScript फ़ाइल (script/index/main.js)");
 
     actionArea.innerHTML = ''; 
 
@@ -599,13 +618,13 @@ function validateProject() {
         
         const btnView = document.createElement('button');
         btnView.className = 'btn-success';
-        btnView.innerHTML = 'View Uploaded Website ▶';
+        btnView.innerHTML = 'अपलोड की गई वेबसाइट देखें ▶';
         btnView.onclick = () => launchProject(null, true);
         actionArea.appendChild(btnView);
         
         const btnSave = document.createElement('button');
         btnSave.className = 'btn-base btn-primary';
-        btnSave.innerHTML = 'Save Project';
+        btnSave.innerHTML = 'प्रोजेक्ट सेव करें';
         btnSave.onclick = saveProject;
         actionArea.appendChild(btnSave);
     }
@@ -655,8 +674,12 @@ function injectAssets(htmlContent, contentMap) {
 
             if (matchUrl) {
                 el.setAttribute(attr, matchUrl);
+            } else if (rawVal.startsWith('http') || rawVal.startsWith('//')) {
+                // Allow external URLs (like Google Fonts, external CDN JS/CSS) to pass through
+                console.log(`[Asset Injector] External asset allowed: ${rawVal}`);
             } else {
-                console.warn(`[Asset Injector] Asset not found in saved content: "${rawVal}"`);
+                // Warn only for local assets that are missing in uploaded files
+                console.warn(`[Asset Injector] Local asset not found in saved content: "${rawVal}"`);
             }
         });
     };
@@ -700,8 +723,8 @@ async function launchProject(projectId, isNewUpload = false) {
 
     previewProjectName.textContent = projectData.name;
     switchView('view-workspace');
-    previewFrame.src = finalUrl;
     
+    previewFrame.src = finalUrl;
     fullscreenFrame.src = finalUrl;
 }
 
@@ -734,7 +757,7 @@ async function openEditor(projectId) {
     editorHtml.value = currentProject.html;
     editorCss.value = currentProject.css;
     editorJs.value = currentProject.js;
-    editorProjectName.textContent = `Editing: ${currentProject.name}`;
+    editorProjectName.textContent = `एडिटिंग: ${currentProject.name}`;
 
     switchView('view-editor');
     switchEditorTab('html');
@@ -792,7 +815,7 @@ window.resetUploadState = resetUploadState;
 window.toggleFullscreen = toggleFullscreen;
 window.deleteProject = deleteProject;
 window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelSave; 
+window.cancelDelete = cancelDelete; 
 window.downloadProjectAsZip = downloadProjectAsZip;
 window.handleAuthAction = handleAuthAction;
 window.toggleAuthMode = toggleAuthMode;
