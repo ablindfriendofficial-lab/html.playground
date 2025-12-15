@@ -106,6 +106,13 @@ function switchView(viewId) {
 async function initSupabase() {
     try {
         // 1. Initialize Supabase Client
+        // Check if window.supabase is available (loaded via CDN)
+        if (!window.supabase) {
+            console.error("Supabase CDN not loaded. Initialization failed.");
+            document.getElementById('loading-spinner').textContent = "❌ Supabase library missing.";
+            return;
+        }
+
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 2. Set up the Authentication Listener
@@ -231,7 +238,6 @@ window.handleAuthAction = async function() {
     const { data, error } = await authPromise;
 
     if (error) {
-        // ERROR: If API key is invalid, the error will be caught here.
         authMessage.textContent = `Login Error: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Auth Error:", error);
@@ -265,7 +271,7 @@ window.userSignOut = async function() {
     }
 }
 
-// --- STORAGE HELPER FUNCTIONS (UNCHANGED) ---
+// --- STORAGE HELPER FUNCTIONS (UNCHANGED - used ONLY by Save/Delete) ---
 
 async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
     if (!content) return null; 
@@ -323,7 +329,7 @@ function getPreviewUrl(htmlContent, cssContent, jsContent) {
 }
 
 
-// --- DATA / SUPABASE FUNCTIONS ---
+// --- DATA / SUPABASE FUNCTIONS (UNCHANGED) ---
 
 function loadProjects() {
     if (supabaseChannel) {
@@ -452,7 +458,7 @@ window.confirmSaveProject = async function() {
             'application/javascript'
         );
         
-        // 2. Save File Paths to Database
+        // 2. Save File Paths to Database (Replacing original content save)
         const dataToSave = {
             user_id: userId,
             name: projectName,
@@ -643,7 +649,7 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
 
     const zip = new JSZip();
 
-    // --- Download content from Storage before zipping ---
+    // --- UPDATED: Download content from Storage before zipping ---
     const [htmlContent, cssContent, jsContent] = await Promise.all([
         downloadStorageFile(BUCKET_NAME, project.htmlPath),
         downloadStorageFile(BUCKET_NAME, project.cssPath),
@@ -683,7 +689,7 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
  * Loads project paths from ID, downloads content, and opens editor.
  */
 window.openEditor = async function(projectId) {
-    switchView('view-editor'); // Switch to editor view first
+    switchView('view-workspace');
     editorHtml.value = '';
     editorCss.value = '';
     editorJs.value = '';
@@ -771,10 +777,7 @@ window.launchProject = async function(projectId) {
     previewProjectName.textContent = `Project Preview: ${project.name}`;
 }
 
-/**
- * Refreshes the preview iframe using the current content in the editor.
- * (LOCAL PREVIEW FUNCTIONALITY)
- */
+
 window.updatePreview = function() {
     // Get current content from the editor fields
     const htmlContent = editorHtml.value;
@@ -790,7 +793,6 @@ window.toggleFullscreen = function(forceExit) {
     if (forceExit) {
         switchView('view-projects');
     } else {
-        // This function needs definition, but using launchProject logic for now
         // Assuming the user meant a simple switch to fullscreen frame
         fullscreenFrame.src = previewFrame.src;
         switchView('view-fullscreen');
@@ -819,7 +821,7 @@ function switchEditorTab(tabId) {
 }
 
 
-// --- UPLOAD / FILE HANDLING LOGIC ---
+// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES) ---
 
 function resetUploadState() {
     uploadedFilesMap.clear();
@@ -904,10 +906,15 @@ window.addEventListener('load', () => {
     });
 });
 
+/**
+ * Handles processing files from any input source (File/Folder dialog or Drag-and-Drop).
+ * This function handles LOCAL file reading.
+ */
 async function processFiles(input) {
     try {
         let newFiles = [];
         
+        // Logic to extract files from DataTransferList (Drag-Drop) or FileList (Input)
         if (input instanceof DataTransferItemList) {
             for (let i = 0; i < input.length; i++) {
                 if (input[i].kind === 'file') {
@@ -923,22 +930,26 @@ async function processFiles(input) {
         
         const readPromises = newFiles.map(file => {
             return new Promise((resolve) => {
+                // Ignore hidden system files
                 if (file.name.startsWith('.') || file.name === '.DS_Store') return resolve();
 
-                // Handles nested paths for folder uploads
                 const pathSegments = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [file.name];
                 const filenameKey = pathSegments.pop().toLowerCase();
                 
+                // Only process the required file types
                 if (filenameKey === 'index.html' || filenameKey === 'style.css' || filenameKey === 'script.js') {
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         uploadedFilesMap.set(filenameKey, e.target.result);
                         resolve();
                     };
-                    reader.onerror = () => resolve(); 
+                    reader.onerror = (e) => {
+                        console.error(`Error reading file ${file.name}:`, e);
+                        resolve(); // Resolve even on error to keep processing other files
+                    }; 
                     reader.readAsText(file);
                 } else {
-                    resolve(); 
+                    resolve(); // Resolve for irrelevant files
                 }
             });
         });
@@ -951,9 +962,15 @@ async function processFiles(input) {
         // Finalize the current project state from uploaded files
         validateProject();
         updateMiniList(); 
+        
+        // Immediately trigger local preview after successful local upload
+        if (currentProject.html) {
+             openEditor(null); // Open the editor/preview with local files
+        }
+
 
     } catch (e) {
-        console.error("Error processing files:", e);
+        console.error("Critical Error processing local files:", e);
     }
 }
 
