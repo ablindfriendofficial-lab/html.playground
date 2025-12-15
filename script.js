@@ -2,7 +2,8 @@
 
 // --- SUPABASE CONFIGURATION ---
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbqOO8IGFwHdU'; 
+const BUCKET_NAME = 'ABC_assets'; // *** YOUR STORAGE BUCKET NAME ***
 
 
 let supabase = null;
@@ -17,11 +18,17 @@ let currentProject = {
     name: '',
     html: '',
     css: '',
-    js: ''
+    js: '',
+    // Paths are now stored in the database instead of content
+    htmlPath: null, 
+    cssPath: null,
+    jsPath: null
 };
 let projectsList = []; 
 let projectIdToDelete = null; 
 let authMode = 'login'; // 'login' or 'signup'
+let currentActiveTab = 'html'; // Added for editor state
+
 
 // --- DOM Elements ---
 const viewLoading = document.getElementById('view-loading');
@@ -69,6 +76,27 @@ const loginBtn = document.getElementById('login-btn');
 const signupBtn = document.getElementById('signup-btn');
 const modeToggleText = document.getElementById('mode-toggle-text');
 
+// --- CORE FUNCTIONS (Helper for view switching, needed for other functions) ---
+
+function switchView(viewId) {
+    const views = {
+        'view-loading': viewLoading,
+        'view-upload': viewUpload,
+        'view-projects': viewProjects,
+        'view-workspace': viewWorkspace,
+        'view-fullscreen': viewFullscreen,
+        'view-auth': viewAuth
+    };
+    
+    Object.keys(views).forEach(key => {
+        const view = views[key];
+        if (view && view.id === viewId) {
+            view.classList.add('active');
+        } else if (view) {
+            view.classList.remove('active');
+        }
+    });
+}
 
 // --- INITIALIZATION (FIXED LOGIC) ---
 
@@ -78,8 +106,6 @@ async function initSupabase() {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 2. Set up the Authentication Listener
-        // This listener is crucial for automatically picking up session changes 
-        // (like those resulting from email confirmation redirects).
         supabase.auth.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
                 handleAuthChange(session);
@@ -88,9 +114,7 @@ async function initSupabase() {
             }
         });
         
-        // 3. Immediately check the initial session status (FIX for redirect issue)
-        // This ensures the page processes any auth tokens present in the URL (from email confirmation) 
-        // immediately upon load, without waiting for the slower onAuthStateChange listener's initial call.
+        // 3. Immediately check the initial session status
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
             handleAuthChange(session);
@@ -128,6 +152,7 @@ function handleAuthChange(session) {
 }
 
 function toggleAuthMode(setMode) {
+    // ... (unchanged auth logic)
     if (setMode) {
         authMode = setMode;
     } else {
@@ -162,6 +187,7 @@ function toggleAuthMode(setMode) {
  * Handles both Login and Signup actions based on the current authMode state.
  */
 async function handleAuthAction() {
+    // ... (unchanged auth logic)
     const actionType = authMode; // Read the current mode
     const email = authEmail.value;
     const password = authPassword.value;
@@ -203,6 +229,7 @@ async function handleAuthAction() {
 }
 
 async function signInWithGoogle() {
+    // ... (unchanged auth logic)
     const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -218,15 +245,85 @@ async function signInWithGoogle() {
 }
 
 async function userSignOut() {
+    // ... (unchanged auth logic)
     const { error } = await supabase.auth.signOut();
     if (error) {
         console.error("Logout Error:", error);
     }
 }
 
-// --- DATA / SUPABASE FUNCTIONS ---
+// --- STORAGE HELPER FUNCTIONS (NEW) ---
+
+/**
+ * Helper function to upload/update a single project component to Supabase Storage.
+ * This is the core 'save to storage' logic.
+ */
+async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
+    if (!content) return null; 
+
+    const fileContent = new Blob([content], { type: mimeType });
+
+    const { data, error } = await supabase.storage
+        .from(bucketName)
+        .upload(filePath, fileContent, {
+            cacheControl: '3600',
+            upsert: true // Allows updating existing files with the same path
+        });
+
+    if (error) {
+        throw new Error(`Storage Upload Failed (${filePath}): ${error.message}`);
+    }
+
+    // data.path returns the path relative to the bucket (e.g., 'user_id/project_name/index.html')
+    return data.path; 
+}
+
+/**
+ * Helper function to download file content from Supabase Storage.
+ * This is the core 'load from storage' logic.
+ */
+async function downloadStorageFile(bucketName, filePath) {
+    if (!filePath) return '';
+    
+    const { data, error } = await supabase.storage
+        .from(bucketName)
+        .download(filePath);
+        
+    if (error) {
+        console.warn(`Warning: Error downloading file ${filePath}. File might not exist.`, error.message);
+        return `/* Error downloading content from Storage: ${error.message} */`;
+    }
+
+    // Convert Blob to text
+    return await data.text();
+}
+
+/**
+ * Constructs a temporary URL for the preview iframe using the code content.
+ */
+function getPreviewUrl(htmlContent, cssContent, jsContent) {
+    const combinedHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Preview</title>
+            <style>${cssContent || ''}</style>
+        </head>
+        <body>
+            ${htmlContent || ''}
+            <script>${jsContent || ''}</script>
+        </body>
+        </html>
+    `;
+    const blob = new Blob([combinedHtml], { type: 'text/html' });
+    return URL.createObjectURL(blob);
+}
+
+
+// --- DATA / SUPABASE FUNCTIONS (UPDATED FOR STORAGE PATHS) ---
 
 function loadProjects() {
+    // ... (unchanged realtime setup logic)
     if (supabaseChannel) {
         supabaseChannel.unsubscribe();
     }
@@ -254,9 +351,10 @@ function loadProjects() {
 }
 
 async function fetchProjects() {
+    // --- UPDATED: 'html', 'css', 'js' columns now store paths, not content. ---
     const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, name, created_at, html, css, js') 
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
@@ -265,12 +363,14 @@ async function fetchProjects() {
         return;
     }
 
+    // Store paths, not content
     projectsList = data.map(p => ({
         id: p.id,
         name: p.name,
-        html: p.html,
-        css: p.css,
-        js: p.js,
+        // Renamed properties locally to reflect they are paths
+        htmlPath: p.html, 
+        cssPath: p.css,   
+        jsPath: p.js,     
         created_at: { toDate: () => new Date(p.created_at) } 
     }));
     
@@ -279,6 +379,7 @@ async function fetchProjects() {
 
 
 function renderProjectsList() {
+    // ... (unchanged rendering logic)
     projectsListContainer.innerHTML = '';
     if (projectsList.length === 0) {
         noProjectsMessage.style.display = 'block';
@@ -304,11 +405,11 @@ function renderProjectsList() {
     });
 }
 
-// --- SAVE/UPLOAD LOGIC (Uses authenticated user ID) ---
+// --- SAVE/UPLOAD LOGIC (UPDATED FOR STORAGE) ---
 
 function saveProject() {
-    if (!currentProject.html || !currentProject.css || !currentProject.js) {
-        console.error("Cannot save: Missing project content. Please ensure all three files are uploaded.");
+    if (!currentProject.html && !currentProject.css && !currentProject.js) { // Check for content, not paths here
+        console.error("Cannot save: Project content is empty.");
         return;
     }
     
@@ -321,6 +422,9 @@ function cancelSave() {
     saveModalOverlay.style.display = 'none';
 }
 
+/**
+ * Saves project files to Storage and stores paths in the Database.
+ */
 async function confirmSaveProject() {
     const projectName = projectNameInput.value.trim();
     saveModalOverlay.style.display = 'none';
@@ -330,13 +434,36 @@ async function confirmSaveProject() {
         return;
     }
 
+    const projectPathBase = `${userId}/${projectName}`;
+    
     try {
+        // 1. Upload Files to Storage (The storage functionality the user requested)
+        const htmlPath = await uploadProjectComponent(
+            BUCKET_NAME, 
+            `${projectPathBase}/index.html`, 
+            currentProject.html, 
+            'text/html'
+        );
+        const cssPath = await uploadProjectComponent(
+            BUCKET_NAME, 
+            `${projectPathBase}/style.css`, 
+            currentProject.css, 
+            'text/css'
+        );
+        const jsPath = await uploadProjectComponent(
+            BUCKET_NAME, 
+            `${projectPathBase}/script.js`, 
+            currentProject.js, 
+            'application/javascript'
+        );
+        
+        // 2. Save File Paths to Database (Replacing original content save)
         const dataToSave = {
-            user_id: userId, // CRUCIAL: Links project to the logged-in user
+            user_id: userId,
             name: projectName,
-            html: currentProject.html,
-            css: currentProject.css,
-            js: currentProject.js
+            html: htmlPath, 
+            css: cssPath,   
+            js: jsPath     
         };
 
         const { data, error } = await supabase
@@ -346,53 +473,93 @@ async function confirmSaveProject() {
 
         if (error) throw error;
 
+        // Update local state with new paths
         currentProject.id = data[0].id;
         currentProject.name = projectName;
-        console.log("Project saved with ID:", currentProject.id);
+        currentProject.htmlPath = htmlPath;
+        currentProject.cssPath = cssPath;
+        currentProject.jsPath = jsPath;
         
         document.getElementById('file-count').textContent = `Project "${projectName}" सेव हो गया!`;
         
         resetUploadState(); 
 
     } catch (e) {
-        console.error("Error saving document:", e);
-        console.error("Failed to save project to Supabase. Check console for details.");
+        console.error("Error saving document:", e.message);
+        document.getElementById('file-count').textContent = `❌ सेव करने में विफल: ${e.message}`;
     }
 }
 
 
+/**
+ * Updates files directly in Storage and updates the database record to ensure consistency.
+ */
 async function saveCodeChanges() {
     if (!currentProject.id) {
         console.error("Cannot save changes: Project ID is missing. Please save the project first.");
         return;
     }
 
-    currentProject.html = editorHtml.value;
-    currentProject.css = editorCss.value;
-    currentProject.js = editorJs.value;
+    // 1. Get updated content from the editor
+    const newHtml = editorHtml.value;
+    const newCss = editorCss.value;
+    const newJs = editorJs.value;
+    
+    const pathBase = `${userId}/${currentProject.name}`;
 
     try {
+        // 2. Update Files in Storage (The storage functionality the user requested)
+        const updatedHtmlPath = await uploadProjectComponent(
+            BUCKET_NAME, 
+            currentProject.htmlPath || `${pathBase}/index.html`, 
+            newHtml, 
+            'text/html'
+        );
+        const updatedCssPath = await uploadProjectComponent(
+            BUCKET_NAME, 
+            currentProject.cssPath || `${pathBase}/style.css`, 
+            newCss, 
+            'text/css'
+        );
+        const updatedJsPath = await uploadProjectComponent(
+            BUCKET_NAME, 
+            currentProject.jsPath || `${pathBase}/script.js`, 
+            newJs, 
+            'application/javascript'
+        );
+        
+        // 3. Update paths in the Database (in case any path was null previously)
         const { error } = await supabase
             .from('projects')
             .update({
-                html: currentProject.html,
-                css: currentProject.css,
-                js: currentProject.js
+                html: updatedHtmlPath,
+                css: updatedCssPath,
+                js: updatedJsPath
             })
             .eq('id', currentProject.id)
             .eq('user_id', userId); 
 
         if (error) throw error;
+        
+        // 4. Update local state
+        currentProject.html = newHtml;
+        currentProject.css = newCss;
+        currentProject.js = newJs;
+        currentProject.htmlPath = updatedHtmlPath;
+        currentProject.cssPath = updatedCssPath;
+        currentProject.jsPath = updatedJsPath;
 
-        // Update the local list
+        // Update the local projects list
         const index = projectsList.findIndex(p => p.id === currentProject.id);
         if (index !== -1) {
-            projectsList[index].html = currentProject.html;
-            projectsList[index].css = currentProject.css;
-            projectsList[index].js = currentProject.js;
+            projectsList[index].htmlPath = updatedHtmlPath;
+            projectsList[index].cssPath = updatedCssPath;
+            projectsList[index].jsPath = updatedJsPath;
         }
 
-        console.log("Project changes saved successfully for:", currentProject.name);
+        updatePreview(); // Update preview with new content
+
+        console.log("Project changes saved successfully to Storage and DB:", currentProject.name);
         document.getElementById('editor-project-name').textContent = `${currentProject.name} (सेव हो गया!)`;
         setTimeout(() => {
             document.getElementById('editor-project-name').textContent = `एडिटिंग: ${currentProject.name}`;
@@ -400,20 +567,14 @@ async function saveCodeChanges() {
         
     } catch (e) {
         console.error("Error saving changes:", e);
-        console.error("Error saving code changes. Check console for details.");
+        document.getElementById('editor-project-name').textContent = `❌ सेव त्रुटि: ${e.message}`;
     }
 }
 
-function resetUploadState() {
-    uploadedFilesMap.clear();
-    currentProject = { id: null, name: '', html: '', css: '', js: '' };
-    updateMiniList();
-    validateProject();
-}
-
-// --- DELETE LOGIC ---
+// --- DELETE LOGIC (UPDATED FOR STORAGE DELETE) ---
 
 function deleteProject(projectId, projectName) {
+    // ... (unchanged modal setup)
     if (!userId) {
         console.error("User not authenticated.");
         return;
@@ -424,6 +585,7 @@ function deleteProject(projectId, projectName) {
 }
 
 function cancelDelete() {
+    // ... (unchanged modal tear down)
     projectIdToDelete = null;
     deleteModalOverlay.style.display = 'none';
 }
@@ -437,15 +599,38 @@ async function confirmDelete() {
     deleteModalOverlay.style.display = 'none';
     const id = projectIdToDelete;
     projectIdToDelete = null;
+    
+    const project = projectsList.find(p => p.id === id);
+    if (!project) {
+        console.error("Project not found in local list.");
+        return;
+    }
+
+    const filesToDelete = [project.htmlPath, project.cssPath, project.jsPath].filter(p => p);
 
     try {
-        const { error } = await supabase
+        // 1. Delete Files from Storage (The storage functionality the user requested)
+        if (filesToDelete.length > 0) {
+            const { error: storageError } = await supabase.storage
+                .from(BUCKET_NAME)
+                .remove(filesToDelete);
+
+            if (storageError) {
+                // Warning: We log the error but still try to delete the DB record.
+                console.error("Storage delete error:", storageError);
+            } else {
+                console.log("Associated files deleted from Storage.");
+            }
+        }
+
+        // 2. Delete Record from Database
+        const { error: dbError } = await supabase
             .from('projects')
             .delete()
             .eq('id', id)
             .eq('user_id', userId); 
 
-        if (error) throw error;
+        if (dbError) throw dbError;
         
         console.log(`Project ${id} deleted successfully.`);
     } catch (e) {
@@ -454,7 +639,7 @@ async function confirmDelete() {
     }
 }
 
-// --- DOWNLOAD LOGIC (JSZip) ---
+// --- DOWNLOAD LOGIC (JSZip - UPDATED FOR STORAGE DOWNLOAD) ---
 
 async function downloadProjectAsZip(projectId, projectName) {
     const project = projectsList.find(p => p.id === projectId);
@@ -470,9 +655,17 @@ async function downloadProjectAsZip(projectId, projectName) {
 
     const zip = new JSZip();
 
-    if (project.html) zip.file("index.html", project.html);
-    if (project.css) zip.file("style.css", project.css);
-    if (project.js) zip.file("script.js", project.js);
+    // --- UPDATED: Download content from Storage before zipping ---
+    const [htmlContent, cssContent, jsContent] = await Promise.all([
+        downloadStorageFile(BUCKET_NAME, project.htmlPath),
+        downloadStorageFile(BUCKET_NAME, project.cssPath),
+        downloadStorageFile(BUCKET_NAME, project.jsPath)
+    ]);
+
+
+    if (htmlContent && !htmlContent.startsWith('/* Error')) zip.file("index.html", htmlContent);
+    if (cssContent && !cssContent.startsWith('/* Error')) zip.file("style.css", cssContent);
+    if (jsContent && !jsContent.startsWith('/* Error')) zip.file("script.js", jsContent);
 
     try {
         const zipBlob = await zip.generateAsync({ type: "blob" });
@@ -496,8 +689,178 @@ async function downloadProjectAsZip(projectId, projectName) {
     }
 }
 
+// --- EDITOR / PREVIEW LOGIC (UPDATED FOR STORAGE DOWNLOAD) ---
+
+/**
+ * Loads project paths from ID, downloads content, and opens editor.
+ */
+async function openEditor(projectId) {
+    switchView('view-workspace');
+    editorHtml.value = '';
+    editorCss.value = '';
+    editorJs.value = '';
+    editorProjectName.textContent = 'Loading...';
+    
+    // Clear paths when opening editor
+    currentProject.htmlPath = null;
+    currentProject.cssPath = null;
+    currentProject.jsPath = null;
+
+
+    if (projectId) {
+        const project = projectsList.find(p => p.id === projectId);
+        if (!project) return;
+        
+        // 1. Set paths/metadata
+        currentProject = { 
+            ...project, 
+            html: '', css: '', js: '', // Clear content temporarily
+            htmlPath: project.htmlPath,
+            cssPath: project.cssPath,
+            jsPath: project.jsPath
+        };
+
+        editorProjectName.textContent = `Downloading: ${project.name}`;
+        
+        // 2. Download content from Storage using paths
+        const [html, css, js] = await Promise.all([
+            downloadStorageFile(BUCKET_NAME, project.htmlPath),
+            downloadStorageFile(BUCKET_NAME, project.cssPath),
+            downloadStorageFile(BUCKET_NAME, project.jsPath)
+        ]);
+
+        // 3. Populate state and editor
+        currentProject.html = html;
+        currentProject.css = css;
+        currentProject.js = js;
+        
+        editorHtml.value = html;
+        editorCss.value = css;
+        editorJs.value = js;
+        
+        editorProjectName.textContent = `एडिटिंग: ${project.name}`;
+        
+    } else {
+        // New upload/edit
+        currentProject.name = 'New Upload';
+        editorHtml.value = uploadedFilesMap.get('index.html') || '';
+        editorCss.value = uploadedFilesMap.get('style.css') || '';
+        editorJs.value = uploadedFilesMap.get('script.js') || '';
+        editorProjectName.textContent = `एडिटिंग: New Upload`;
+    }
+    
+    // Update preview after content is loaded/set
+    switchEditorTab(currentActiveTab);
+    updatePreview();
+}
+
+/**
+ * Loads project paths from ID, downloads content, and opens fullscreen preview.
+ */
+async function launchProject(projectId) {
+    const project = projectsList.find(p => p.id === projectId);
+    if (!project) return;
+
+    previewProjectName.textContent = `Downloading: ${project.name}`;
+    switchView('view-fullscreen');
+
+    const [html, css, js] = await Promise.all([
+        downloadStorageFile(BUCKET_NAME, project.htmlPath),
+        downloadStorageFile(BUCKET_NAME, project.cssPath),
+        downloadStorageFile(BUCKET_NAME, project.jsPath)
+    ]);
+    
+    fullscreenFrame.src = getPreviewUrl(html, css, js);
+    previewProjectName.textContent = `फुलस्क्रीन: ${project.name}`;
+}
+
+
+function updatePreview() {
+    // Get current content from the editor fields
+    const htmlContent = editorHtml.value;
+    const cssContent = editorCss.value;
+    const jsContent = editorJs.value;
+
+    previewFrame.src = getPreviewUrl(htmlContent, cssContent, jsContent);
+}
+
+function switchEditorTab(tabId) {
+    currentActiveTab = tabId;
+    editorTabs.forEach(tab => {
+        if (tab.dataset.tab === tabId) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    [editorHtml, editorCss, editorJs].forEach(editor => {
+        if (editor.dataset.tab === tabId) {
+            editor.classList.add('active');
+            editor.focus();
+        } else {
+            editor.classList.remove('active');
+        }
+    });
+}
+
 
 // --- UPLOAD / FILE HANDLING LOGIC ---
+
+function resetUploadState() {
+    uploadedFilesMap.clear();
+    currentProject = { id: null, name: '', html: '', css: '', js: '', htmlPath: null, cssPath: null, jsPath: null };
+    updateMiniList();
+    validateProject();
+}
+
+function validateProject() {
+    const hasHtml = !!uploadedFilesMap.get('index.html');
+    
+    currentProject.html = uploadedFilesMap.get('index.html') || '';
+    currentProject.css = uploadedFilesMap.get('style.css') || '';
+    currentProject.js = uploadedFilesMap.get('script.js') || '';
+
+    let missing = [];
+    if (!hasHtml) missing.push('index.html');
+    
+    const canSave = hasHtml;
+    
+    saveProjectBtn.disabled = !canSave;
+    openEditorBtn.disabled = !canSave;
+    
+    const missingUl = missingList.querySelector('ul');
+    missingUl.innerHTML = '';
+    
+    if (missing.length > 0) {
+        missingList.style.display = 'block';
+        missing.forEach(file => {
+            const li = document.createElement('li');
+            li.textContent = file;
+            missingUl.appendChild(li);
+        });
+    } else {
+        missingList.style.display = 'none';
+    }
+}
+
+function updateMiniList() {
+    miniFileList.innerHTML = '';
+    const filesFound = uploadedFilesMap.keys();
+    let count = 0;
+
+    if (uploadedFilesMap.size > 0) {
+        filesFound.forEach(filename => {
+            const li = document.createElement('li');
+            li.textContent = filename;
+            miniFileList.appendChild(li);
+            count++;
+        });
+    }
+
+    fileCountDisplay.textContent = `${count} फ़ाइलें मिलीं।`;
+}
+
 
 window.addEventListener('load', () => {
     initSupabase();
@@ -511,7 +874,10 @@ window.addEventListener('load', () => {
     });
     dropZone.addEventListener('dragenter', () => dropZone.classList.add('drag-active'));
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
-    dropZone.addEventListener('drop', (e) => processFiles(e.dataTransfer.items));
+    dropZone.addEventListener('drop', (e) => {
+        dropZone.classList.remove('drag-active');
+        processFiles(e.dataTransfer.items);
+    });
 
     editorTabs.forEach(tab => {
         tab.addEventListener('click', () => switchEditorTab(tab.dataset.tab));
@@ -545,10 +911,11 @@ async function processFiles(input) {
             return new Promise((resolve) => {
                 if (file.name.startsWith('.') || file.name === '.DS_Store') return resolve();
 
+                // Handles nested paths for folder uploads
                 const pathSegments = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [file.name];
                 const filenameKey = pathSegments.pop().toLowerCase();
                 
-                if (filenameKey.endsWith('.html') || filenameKey.endsWith('.css') || filenameKey.endsWith('.js')) {
+                if (filenameKey === 'index.html' || filenameKey === 'style.css' || filenameKey === 'script.js') {
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         uploadedFilesMap.set(filenameKey, e.target.result);
@@ -567,258 +934,12 @@ async function processFiles(input) {
         currentProject.id = null;
         currentProject.name = 'New Upload';
         
-        currentProject.html = uploadedFilesMap.get('index.html') || '';
-        currentProject.css = uploadedFilesMap.get('style.css') || uploadedFilesMap.get('index.css') || uploadedFilesMap.get('main.css') || '';
-        currentProject.js = uploadedFilesMap.get('script.js') || uploadedFilesMap.get('index.js') || uploadedFilesMap.get('main.js') || '';
-
-        updateMiniList();
+        // Finalize the current project state from uploaded files
         validateProject();
+        updateMiniList(); 
 
-    } catch (err) {
-        console.error("An error occurred during file processing:", err);
+    } catch (e) {
+        console.error("Error processing files:", e);
     }
 }
-
-function updateMiniList() {
-    miniFileList.style.display = uploadedFilesMap.size > 0 ? 'block' : 'none';
-    miniFileList.innerHTML = '';
-    
-    uploadedFilesMap.forEach((val, key) => {
-        const div = document.createElement('div');
-        div.className = 'mini-file-item';
-        div.textContent = key;
-        miniFileList.appendChild(div);
-    });
-
-    fileCountDisplay.textContent = `फ़ाइलें लोड की गईं: ${uploadedFilesMap.size}`;
-}
-
-function validateProject() {
-    let hasHTML = !!currentProject.html;
-    let hasCSS = !!currentProject.css;
-    let hasJS = !!currentProject.js;
-
-    const missing = [];
-    if (!hasHTML) missing.push("index.html");
-    if (!hasCSS) missing.push("CSS फ़ाइल (style/index/main.css)");
-    if (!hasJS) missing.push("JavaScript फ़ाइल (script/index/main.js)");
-
-    actionArea.innerHTML = ''; 
-
-    if (missing.length > 0) {
-        missingList.innerHTML = '';
-        missing.forEach(item => {
-            const li = document.createElement('li');
-            li.textContent = item;
-            missingList.appendChild(li);
-        });
-        errorDisplay.style.display = 'block';
-    } else {
-        errorDisplay.style.display = 'none';
-        
-        const btnView = document.createElement('button');
-        btnView.className = 'btn-success';
-        btnView.innerHTML = 'अपलोड की गई वेबसाइट देखें ▶';
-        btnView.onclick = () => launchProject(null, true);
-        actionArea.appendChild(btnView);
-        
-        const btnSave = document.createElement('button');
-        btnSave.className = 'btn-base btn-primary';
-        btnSave.innerHTML = 'प्रोजेक्ट सेव करें';
-        btnSave.onclick = saveProject;
-        actionArea.appendChild(btnSave);
-    }
-}
-
-// --- PREVIEW LOGIC ---
-
-const contentBlobMap = new Map();
-
-function prepareProjectBlobs(projectData) {
-    objectUrls.forEach(url => URL.revokeObjectURL(url));
-    objectUrls = [];
-    contentBlobMap.clear();
-
-    if (projectData.css) {
-        const cssBlob = new Blob([projectData.css], { type: 'text/css' });
-        const cssUrl = URL.createObjectURL(cssBlob);
-        objectUrls.push(cssUrl);
-        contentBlobMap.set('style.css', cssUrl);
-        contentBlobMap.set('index.css', cssUrl);
-        contentBlobMap.set('main.css', cssUrl);
-    }
-
-    if (projectData.js) {
-        const jsBlob = new Blob([projectData.js], { type: 'text/javascript' });
-        const jsUrl = URL.createObjectURL(jsBlob);
-        objectUrls.push(jsUrl);
-        contentBlobMap.set('script.js', jsUrl);
-        contentBlobMap.set('index.js', jsUrl);
-        contentBlobMap.set('main.js', jsUrl);
-    }
-}
-
-function injectAssets(htmlContent, contentMap) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, 'text/html');
-
-    const rewrite = (selector, attr) => {
-        doc.querySelectorAll(selector).forEach(el => {
-            let rawVal = el.getAttribute(attr);
-            if (!rawVal) return;
-            
-            const cleanPath = rawVal.split('/').pop();
-            const filenameKey = decodeURIComponent(cleanPath).trim().toLowerCase();
-
-            const matchUrl = contentMap.get(filenameKey);
-
-            if (matchUrl) {
-                el.setAttribute(attr, matchUrl);
-            } else if (rawVal.startsWith('http') || rawVal.startsWith('//')) {
-                // Allow external URLs (like Google Fonts, external CDN JS/CSS) to pass through
-                console.log(`[Asset Injector] External asset allowed: ${rawVal}`);
-            } else {
-                // Warn only for local assets that are missing in uploaded files
-                console.warn(`[Asset Injector] Local asset not found in saved content: "${rawVal}"`);
-            }
-        });
-    };
-
-    rewrite('link[href]', 'href');
-    rewrite('script[src]', 'src');
-
-    return doc.documentElement.outerHTML;
-}
-
-
-async function launchProject(projectId, isNewUpload = false) {
-    let projectData;
-
-    if (isNewUpload) {
-        projectData = currentProject;
-    } else {
-        projectData = projectsList.find(p => p.id === projectId);
-        if (!projectData) {
-            console.error("Project not found:", projectId);
-            return;
-        }
-        
-        currentProject = {
-            id: projectData.id,
-            name: projectData.name,
-            html: projectData.html,
-            css: projectData.css,
-            js: projectData.js
-        };
-    }
-    
-    prepareProjectBlobs(projectData);
-
-    const finalHtml = injectAssets(projectData.html, contentBlobMap);
-    
-    const fullDoc = "<!DOCTYPE html>\n" + finalHtml;
-    const htmlBlob = new Blob([fullDoc], { type: 'text/html' });
-    const finalUrl = URL.createObjectURL(htmlBlob);
-    objectUrls.push(finalUrl);
-
-    previewProjectName.textContent = projectData.name;
-    switchView('view-workspace');
-    
-    previewFrame.src = finalUrl;
-    fullscreenFrame.src = finalUrl;
-}
-
-function toggleFullscreen(isExiting = false) {
-    if (isExiting) {
-        switchView('view-workspace');
-    } else {
-        switchView('view-fullscreen');
-    }
-}
-
-function refreshPreview() {
-    launchProject(currentProject.id, !currentProject.id);
-}
-
-// --- EDITOR LOGIC ---
-
-async function openEditor(projectId) {
-    const projectData = projectsList.find(p => p.id === projectId);
-    if (!projectData) return;
-
-    currentProject = {
-        id: projectData.id,
-        name: projectData.name,
-        html: projectData.html,
-        css: projectData.css,
-        js: projectData.js
-    };
-
-    editorHtml.value = currentProject.html;
-    editorCss.value = currentProject.css;
-    editorJs.value = currentProject.js;
-    editorProjectName.textContent = `एडिटिंग: ${currentProject.name}`;
-
-    switchView('view-editor');
-    switchEditorTab('html');
-}
-
-function switchEditorTab(key) {
-    editorTabs.forEach(tab => {
-        if (tab.dataset.tab === key) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
-    });
-    
-    [editorHtml, editorCss, editorJs].forEach(textarea => {
-        if (textarea.dataset.key === key) {
-            textarea.classList.add('active');
-            textarea.focus();
-        } else {
-            textarea.classList.remove('active');
-        }
-    });
-}
-
-// --- UTILITY / VIEW MANAGEMENT ---
-
-const allViews = [viewUpload, viewProjects, viewWorkspace, viewEditor, viewLoading, viewFullscreen, saveModalOverlay, deleteModalOverlay, viewAuth];
-
-function switchView(viewId) {
-    allViews.forEach(el => {
-        el.classList.remove('active');
-        if (el.id === 'save-modal-overlay' || el.id === 'delete-modal-overlay') {
-            el.style.display = 'none'; 
-        }
-    });
-    
-    const target = document.getElementById(viewId);
-    target.classList.add('active');
-    
-    if (viewId === 'save-modal-overlay' || viewId === 'delete-modal-overlay') {
-        target.style.display = 'flex';
-    }
-}
-
-// Expose functions globally for inline HTML usage
-window.saveProject = saveProject;
-window.confirmSaveProject = confirmSaveProject;
-window.cancelSave = cancelSave;
-window.saveCodeChanges = saveCodeChanges;
-window.launchProject = launchProject;
-window.openEditor = openEditor;
-window.refreshPreview = refreshPreview;
-window.switchView = switchView;
-window.resetUploadState = resetUploadState; 
-window.toggleFullscreen = toggleFullscreen;
-window.deleteProject = deleteProject;
-window.confirmDelete = confirmDelete;
-window.cancelDelete = cancelDelete; 
-window.downloadProjectAsZip = downloadProjectAsZip;
-window.handleAuthAction = handleAuthAction;
-window.toggleAuthMode = toggleAuthMode;
-window.userSignOut = userSignOut;
-window.signInWithGoogle = signInWithGoogle;
 
