@@ -79,12 +79,9 @@ const loginBtn = document.getElementById('login-btn');
 const signupBtn = document.getElementById('signup-btn');
 const modeToggleText = document.getElementById('mode-toggle-text');
 
-// --- CORE NAVIGATION FUNCTIONS (HISTORY API IMPLEMENTATION) ---
+// --- CORE FUNCTIONS (Helper for view switching, needed for other functions) ---
 
-/**
- * Renders the correct view visually (private function).
- */
-function _switchViewVisual(viewId) {
+function switchView(viewId) {
     const views = {
         'view-loading': viewLoading,
         'view-upload': viewUpload,
@@ -104,31 +101,11 @@ function _switchViewVisual(viewId) {
     });
 }
 
-/**
- * Handles navigation, updating the browser history if required.
- */
-function navigate(viewId, pushState = true) {
-    if (pushState && window.location.hash !== `#${viewId}`) {
-        // Push a new state only if the current hash is different
-        history.pushState({ viewId: viewId }, '', `#${viewId}`);
-    }
-    _switchViewVisual(viewId);
-}
-
-/**
- * Expose the main navigation function globally for HTML onclick events.
- */
-window.switchView = function(viewId) {
-    navigate(viewId, true);
-}
-
-
 // --- INITIALIZATION (FIXED LOGIC) ---
 
 async function initSupabase() {
     try {
         // 1. Initialize Supabase Client
-        // Check if window.supabase is available (loaded via CDN)
         if (!window.supabase) {
             console.error("Supabase CDN not loaded. Initialization failed.");
             document.getElementById('loading-spinner').textContent = "❌ Supabase library missing.";
@@ -161,12 +138,9 @@ async function initSupabase() {
 
         if (session) {
             handleAuthChange(session);
-            // After successful session handling, set initial view without pushing state
             navigate(initialHash, false); 
         } else {
-            // No session found, show auth view
             handleAuthChange(null);
-            // For auth screen, we don't need to push state initially
             navigate('view-auth', false);
         }
 
@@ -176,16 +150,39 @@ async function initSupabase() {
     }
 }
 
-// --- HISTORY API LISTENER (Handles browser back/forward buttons) ---
+// --- HISTORY API LISTENER ---
+
+function _switchViewVisual(viewId) {
+    const views = {
+        'view-loading': viewLoading,
+        'view-upload': viewUpload,
+        'view-projects': viewProjects,
+        'view-workspace': viewWorkspace,
+        'view-fullscreen': viewFullscreen,
+        'view-auth': viewAuth
+    };
+    
+    Object.keys(views).forEach(key => {
+        const view = views[key];
+        if (view && view.id === viewId) {
+            view.classList.add('active');
+        } else if (view) {
+            view.classList.remove('active');
+        }
+    });
+}
+
+function navigate(viewId, pushState = true) {
+    if (pushState && window.location.hash !== `#${viewId}`) {
+        history.pushState({ viewId: viewId }, '', `#${viewId}`);
+    }
+    _switchViewVisual(viewId);
+}
 
 window.addEventListener('popstate', (event) => {
-    // Read the viewId from the history state, default to 'view-auth' if state is null
     const viewId = event.state && event.state.viewId ? event.state.viewId : (userId ? 'view-upload' : 'view-auth');
-    
-    // Navigate without pushing a new state (replace current hash)
     navigate(viewId, false);
 });
-
 
 // --- AUTH LOGIC (UNCHANGED) ---
 
@@ -200,7 +197,6 @@ function handleAuthChange(session) {
             welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
         }
         
-        // Navigate to upload view after login
         navigate('view-upload', true); 
     } else {
         userId = null;
@@ -227,7 +223,7 @@ function toggleAuthMode(setMode) {
         if (signupBtn) signupBtn.style.display = 'none';
         if (signupBtn) signupBtn.classList.remove('btn-primary');
         if (signupBtn) signupBtn.classList.add('btn-secondary');
-    } else { // authMode === 'signup'
+    } else { 
         if (signupBtn) signupBtn.style.display = 'flex';
         if (signupBtn) signupBtn.classList.add('btn-primary');
         if (signupBtn) signupBtn.classList.remove('btn-secondary');
@@ -241,10 +237,6 @@ function toggleAuthMode(setMode) {
     if (authMessage) authMessage.style.display = 'none';
 }
 
-/**
- * Handles both Login and Signup actions based on the current authMode state.
- * Attached to window object to be accessible from HTML onclick.
- */
 window.handleAuthAction = async function() { 
     const actionType = authMode; 
     const email = authEmail.value;
@@ -310,7 +302,7 @@ window.userSignOut = async function() {
     }
 }
 
-// --- STORAGE HELPER FUNCTIONS (UNCHANGED) ---
+// --- STORAGE HELPER FUNCTIONS ---
 
 async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
     if (!content) return null; 
@@ -346,9 +338,6 @@ async function downloadStorageFile(bucketName, filePath) {
     return await data.text();
 }
 
-/**
- * Creates a local Blob URL for immediate preview (LOCAL FUNCTIONALITY)
- */
 function getPreviewUrl(htmlContent, cssContent, jsContent) {
     const combinedHtml = `
         <!DOCTYPE html>
@@ -393,7 +382,7 @@ function loadProjects() {
             }
         });
 
-    // 2. Initial fetch: Call fetchProjects directly after setting up the listener
+    // 2. Initial fetch
     fetchProjects(); 
 }
 
@@ -477,7 +466,6 @@ window.confirmSaveProject = async function() {
     const projectPathBase = `${userId}/${projectName}`;
     
     try {
-        // 1. Upload Files to Storage (THE ONLY PLACE INSERT/UPLOAD RUNS)
         const htmlPath = await uploadProjectComponent(
             BUCKET_NAME, 
             `${projectPathBase}/index.html`, 
@@ -497,7 +485,6 @@ window.confirmSaveProject = async function() {
             'application/javascript'
         );
         
-        // 2. Save File Paths to Database (Replacing original content save)
         const dataToSave = {
             user_id: userId,
             name: projectName,
@@ -513,7 +500,6 @@ window.confirmSaveProject = async function() {
 
         if (error) throw error;
 
-        // Update local state with new paths
         currentProject.id = data[0].id;
         currentProject.name = projectName;
         currentProject.htmlPath = htmlPath;
@@ -536,7 +522,6 @@ window.saveCodeChanges = async function() {
         return;
     }
 
-    // 1. Get updated content from the editor
     const newHtml = editorHtml.value;
     const newCss = editorCss.value;
     const newJs = editorJs.value;
@@ -544,7 +529,6 @@ window.saveCodeChanges = async function() {
     const pathBase = `${userId}/${currentProject.name}`;
 
     try {
-        // 2. Update Files in Storage (Storage Update Logic)
         const updatedHtmlPath = await uploadProjectComponent(
             BUCKET_NAME, 
             currentProject.htmlPath || `${pathBase}/index.html`, 
@@ -564,7 +548,6 @@ window.saveCodeChanges = async function() {
             'application/javascript'
         );
         
-        // 3. Update paths in the Database
         const { error } = await supabase
             .from('projects')
             .update({
@@ -577,7 +560,6 @@ window.saveCodeChanges = async function() {
 
         if (error) throw error;
         
-        // 4. Update local state
         currentProject.html = newHtml;
         currentProject.css = newCss;
         currentProject.js = newJs;
@@ -585,7 +567,6 @@ window.saveCodeChanges = async function() {
         currentProject.cssPath = updatedCssPath;
         currentProject.jsPath = updatedJsPath;
 
-        // Update the local projects list
         const index = projectsList.findIndex(p => p.id === currentProject.id);
         if (index !== -1) {
             projectsList[index].htmlPath = updatedHtmlPath;
@@ -593,7 +574,7 @@ window.saveCodeChanges = async function() {
             projectsList[index].jsPath = updatedJsPath;
         }
 
-        updatePreview(); // Update preview with new content
+        updatePreview();
 
         console.log("Project changes saved successfully to Storage and DB:", currentProject.name);
         document.getElementById('editor-project-name').textContent = `${currentProject.name} (Saved!)`;
@@ -606,8 +587,6 @@ window.saveCodeChanges = async function() {
         document.getElementById('editor-project-name').textContent = `❌ Save Error: ${e.message}`;
     }
 }
-
-// --- DELETE LOGIC (UPDATED FOR STORAGE DELETE) ---
 
 window.deleteProject = function(projectId, projectName) {
     if (!userId) {
@@ -643,7 +622,6 @@ window.confirmDelete = async function() {
     const filesToDelete = [project.htmlPath, project.cssPath, project.jsPath].filter(p => p);
 
     try {
-        // 1. Delete Files from Storage 
         if (filesToDelete.length > 0) {
             const { error: storageError } = await supabase.storage
                 .from(BUCKET_NAME)
@@ -656,7 +634,6 @@ window.confirmDelete = async function() {
             }
         }
 
-        // 2. Delete Record from Database
         const { error: dbError } = await supabase
             .from('projects')
             .delete()
@@ -672,8 +649,6 @@ window.confirmDelete = async function() {
     }
 }
 
-// --- DOWNLOAD LOGIC (JSZip - UPDATED FOR STORAGE DOWNLOAD) ---
-
 window.downloadProjectAsZip = async function(projectId, projectName) {
     const project = projectsList.find(p => p.id === projectId);
     if (!project) {
@@ -688,7 +663,6 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
 
     const zip = new JSZip();
 
-    // --- UPDATED: Download content from Storage before zipping ---
     const [htmlContent, cssContent, jsContent] = await Promise.all([
         downloadStorageFile(BUCKET_NAME, project.htmlPath),
         downloadStorageFile(BUCKET_NAME, project.cssPath),
@@ -712,6 +686,7 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
         downloadLink.download = `${safeFileName}.zip`;
         
         document.body.appendChild(downloadLink);
+        downloadLink.click(); 
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(downloadUrl);
         
@@ -721,47 +696,38 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
     }
 }
 
-// --- EDITOR / PREVIEW LOGIC (Updated to pull content from local state first) ---
+// --- EDITOR / PREVIEW LOGIC ---
 
-/**
- * Loads project paths from ID, downloads content, and opens editor.
- */
 window.openEditor = async function(projectId) {
-    // FIX: Ensure editor content is cleared before new content loads
     editorHtml.value = '';
     editorCss.value = '';
     editorJs.value = '';
     editorProjectName.textContent = 'Loading...';
     
-    // Clear paths when opening editor
     currentProject.htmlPath = null;
     currentProject.cssPath = null;
     currentProject.jsPath = null;
 
 
     if (projectId) {
-        // --- Existing Saved Project Logic (Requires Storage Download) ---
         const project = projectsList.find(p => p.id === projectId);
         if (!project) return;
         
         currentProject.name = project.name;
         currentProject.id = project.id;
 
-        // 1. Set paths/metadata
         currentProject.htmlPath = project.htmlPath;
         currentProject.cssPath = project.cssPath;
         currentProject.jsPath = project.jsPath;
 
         editorProjectName.textContent = `Downloading: ${project.name}`;
         
-        // 2. Download content from Storage using paths
         const [html, css, js] = await Promise.all([
             downloadStorageFile(BUCKET_NAME, project.htmlPath),
             downloadStorageFile(BUCKET_NAME, project.cssPath),
             downloadStorageFile(BUCKET_NAME, project.jsPath)
         ]);
 
-        // 3. Populate state and editor
         currentProject.html = html;
         currentProject.css = css;
         currentProject.js = js;
@@ -773,12 +739,12 @@ window.openEditor = async function(projectId) {
         editorProjectName.textContent = `Editing: ${project.name}`;
         
     } else {
-        // --- Local Upload Logic (Uses purely local state) ---
-        // This is called by the "Preview/Edit Code" button in view-upload
+        // LOCAL PREVIEW LOGIC
+        // We use normalization to find the files even if named differently
         currentProject.name = 'New Upload';
         currentProject.id = null;
         
-        // Content comes directly from the uploadedFilesMap state
+        // This is the normalized key logic
         editorHtml.value = uploadedFilesMap.get('index.html') || '';
         editorCss.value = uploadedFilesMap.get('style.css') || '';
         editorJs.value = uploadedFilesMap.get('script.js') || '';
@@ -790,16 +756,11 @@ window.openEditor = async function(projectId) {
         editorProjectName.textContent = `Editing: New Upload`;
     }
     
-    // Update preview after content is loaded/set
     switchEditorTab(currentActiveTab);
     updatePreview();
-    // Use navigate for history support
     navigate('view-workspace', true); 
 }
 
-/**
- * Loads project paths from ID, downloads content, and opens fullscreen preview.
- */
 window.launchProject = async function(projectId) {
     const project = projectsList.find(p => p.id === projectId);
     if (!project) return;
@@ -814,13 +775,11 @@ window.launchProject = async function(projectId) {
     
     fullscreenFrame.src = getPreviewUrl(html, css, js);
     previewProjectName.textContent = `Project Preview: ${project.name}`;
-    // Use navigate for history support
     navigate('view-fullscreen', true); 
 }
 
 
 window.updatePreview = function() {
-    // Get current content from the editor fields
     const htmlContent = editorHtml.value;
     const cssContent = editorCss.value;
     const jsContent = editorJs.value;
@@ -828,16 +787,12 @@ window.updatePreview = function() {
     previewFrame.src = getPreviewUrl(htmlContent, cssContent, jsContent);
 }
 
-// Re-exposed globally for HTML button call
 window.refreshPreview = window.updatePreview;
 window.toggleFullscreen = function(forceExit) {
     if (forceExit) {
-        // Use navigate for history support
         navigate('view-projects', true);
     } else {
-        // Assuming the user meant a simple switch to fullscreen frame
         fullscreenFrame.src = previewFrame.src;
-        // Use navigate for history support
         navigate('view-fullscreen', true);
     }
 }
@@ -864,7 +819,7 @@ function switchEditorTab(tabId) {
 }
 
 
-// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES - IMPROVED) ---
+// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES - FIXED) ---
 
 function resetUploadState() {
     uploadedFilesMap.clear();
@@ -874,18 +829,14 @@ function resetUploadState() {
 }
 
 function validateProject() {
+    // Check for any HTML file using normalized keys
     const hasHtml = !!uploadedFilesMap.get('index.html');
     
-    currentProject.html = uploadedFilesMap.get('index.html') || '';
-    currentProject.css = uploadedFilesMap.get('style.css') || '';
-    currentProject.js = uploadedFilesMap.get('script.js') || '';
-
     let missing = [];
-    if (!hasHtml) missing.push('index.html');
+    if (!hasHtml) missing.push('index.html or .html file');
     
     const canSave = hasHtml;
     
-    // Buttons are ENABLED only if HTML is present
     if (saveProjectBtn) saveProjectBtn.disabled = !canSave;
     if (openEditorBtn) openEditorBtn.disabled = !canSave; 
     
@@ -909,13 +860,19 @@ function updateMiniList() {
     const filesFound = uploadedFilesMap.keys();
     let count = 0;
 
-    if (uploadedFilesMap.size > 0) {
-        filesFound.forEach(filename => {
-            const li = document.createElement('li');
-            li.textContent = filename;
-            miniFileList.appendChild(li);
-            count++;
-        });
+    // Convert iterator to array to loop safely
+    Array.from(filesFound).forEach(filename => {
+        const li = document.createElement('li');
+        li.textContent = filename;
+        miniFileList.appendChild(li);
+        count++;
+    });
+    
+    // Explicitly show list if files exist
+    if (count > 0) {
+        miniFileList.style.display = 'block';
+    } else {
+        miniFileList.style.display = 'none';
     }
 
     fileCountDisplay.textContent = `${count} files found.`;
@@ -925,11 +882,9 @@ function updateMiniList() {
 window.addEventListener('load', () => {
     initSupabase();
     
-    // --- Event Listeners ---
     if (folderInput) folderInput.addEventListener('change', (e) => processFiles(e.target.files));
     if (fileInput) fileInput.addEventListener('change', (e) => processFiles(e.target.files));
     
-    // Drag/Drop Listeners
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
         if (dropZone) dropZone.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
     });
@@ -953,16 +908,15 @@ window.addEventListener('load', () => {
 
 /**
  * Handles processing files from any input source (File/Folder dialog or Drag-and-Drop).
- * This function handles LOCAL file reading.
+ * THIS IS THE KEY FIX FOR LOCAL PREVIEW
  */
 async function processFiles(input) {
     try {
         let newFiles = [];
+        console.log("Processing files...", input);
         
-        // 1. Extract files reliably from various inputs (FileList or DataTransferItemList)
         if (input instanceof DataTransferItemList) {
             for (let i = 0; i < input.length; i++) {
-                // Drag-and-drop items need to be converted to File objects
                 if (input[i].kind === 'file') {
                     const file = input[i].getAsFile();
                     if (file) newFiles.push(file);
@@ -970,23 +924,40 @@ async function processFiles(input) {
             }
         } else if (input instanceof FileList || Array.isArray(input)) {
             newFiles = Array.from(input);
+        } else if (input && typeof input === 'object' && input.length !== undefined) {
+             // Handle raw file lists from some mobile browsers
+             newFiles = Array.from(input);
         }
 
-        if (newFiles.length === 0) return;
+        if (newFiles.length === 0) {
+            console.log("No files found in input.");
+            return;
+        }
         
+        console.log("Found files:", newFiles.map(f => f.name));
+
         const readPromises = newFiles.map(file => {
             return new Promise((resolve) => {
-                // Ignore hidden system files
                 if (!file || file.name.startsWith('.')) return resolve();
 
-                // Get filename (handling folder path if present)
-                const filename = (file.webkitRelativePath || file.name).split('/').pop().toLowerCase();
-                
-                // Only process the required file types
-                if (filename === 'index.html' || filename === 'style.css' || filename === 'script.js') {
+                // Simple filename extraction
+                const originalName = file.name.toLowerCase();
+                let normalizedKey = null;
+
+                // SMART FILE DETECTION LOGIC
+                if (originalName.endsWith('.html')) {
+                    normalizedKey = 'index.html'; // Map ANY html to index.html for preview
+                } else if (originalName.endsWith('.css')) {
+                    normalizedKey = 'style.css'; // Map ANY css to style.css for preview
+                } else if (originalName.endsWith('.js')) {
+                    normalizedKey = 'script.js'; // Map ANY js to script.js for preview
+                }
+
+                if (normalizedKey) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                        uploadedFilesMap.set(filename, e.target.result);
+                        console.log(`Loaded: ${file.name} as ${normalizedKey}`);
+                        uploadedFilesMap.set(normalizedKey, e.target.result);
                         resolve();
                     };
                     reader.onerror = (e) => {
@@ -995,26 +966,25 @@ async function processFiles(input) {
                     }; 
                     reader.readAsText(file);
                 } else {
-                    resolve(); // Resolve for irrelevant files
+                    console.log(`Skipped irrelevant file: ${file.name}`);
+                    resolve(); 
                 }
             });
         });
 
         await Promise.all(readPromises);
         
-        // Reset and update UI state
         currentProject.id = null;
         currentProject.name = 'New Upload';
         
-        // Finalize the current project state from uploaded files
         validateProject();
         updateMiniList(); 
         
-        // **IMPORTANT:** Automatic preview call removed. The user must click the button.
-
+        console.log("File processing complete. Map size:", uploadedFilesMap.size);
 
     } catch (e) {
         console.error("Critical Error processing local files:", e);
     }
 }
+
 
