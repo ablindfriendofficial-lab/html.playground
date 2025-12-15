@@ -735,6 +735,7 @@ window.openEditor = async function(projectId) {
         
     } else {
         // --- Local Upload Logic (Uses purely local state) ---
+        // This is called by the "Preview/Edit Code" button in view-upload
         currentProject.name = 'New Upload';
         currentProject.id = null;
         
@@ -842,7 +843,7 @@ function validateProject() {
     const canSave = hasHtml;
     
     if (saveProjectBtn) saveProjectBtn.disabled = !canSave;
-    if (openEditorBtn) openEditorBtn.disabled = !canSave;
+    if (openEditorBtn) openEditorBtn.disabled = !canSave; // Preview button enables only if HTML is present
     
     const missingUl = missingList ? missingList.querySelector('ul') : null;
     if (missingUl) missingUl.innerHTML = '';
@@ -908,7 +909,7 @@ window.addEventListener('load', () => {
 
 /**
  * Handles processing files from any input source (File/Folder dialog or Drag-and-Drop).
- * IMPROVEMENT: Simplified file extraction logic.
+ * This function handles LOCAL file reading.
  */
 async function processFiles(input) {
     try {
@@ -965,10 +966,7 @@ async function processFiles(input) {
         validateProject();
         updateMiniList(); 
         
-        // Immediately trigger local preview after successful local upload
-        if (uploadedFilesMap.get('index.html')) {
-             openEditor(null); // Open the editor/preview with local files
-        }
+        // **IMPORTANT:** Automatic preview call removed. The user must click the button.
 
 
     } catch (e) {
