@@ -109,7 +109,7 @@ async function initSupabase() {
         
         // 2. Set up the Authentication Listener
         supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRFESHED') {
                 handleAuthChange(session);
             } else if (event === 'SIGNED_OUT') {
                 handleAuthChange(null);
@@ -163,7 +163,7 @@ function toggleAuthMode(setMode) {
         authMode = authMode === 'login' ? 'signup' : 'login';
     }
     
-    authTitle.textContent = authMode === 'login' ? 'प्रोजेक्ट्स एक्सेस करने के लिए लॉग इन करें' : 'नया अकाउंट बनाएँ';
+    authTitle.textContent = authMode === 'login' ? 'Log In to Access Projects' : 'Sign Up to Create Account';
     
     if (authMode === 'login') {
         if (loginBtn) loginBtn.style.display = 'flex';
@@ -183,7 +183,7 @@ function toggleAuthMode(setMode) {
         if (loginBtn) loginBtn.classList.add('btn-secondary');
     }
     
-    if (modeToggleText) modeToggleText.textContent = authMode === 'login' ? 'साइन अप' : 'लॉग इन';
+    if (modeToggleText) modeToggleText.textContent = authMode === 'login' ? 'Sign Up' : 'Log In';
     if (authMessage) authMessage.style.display = 'none';
 }
 
@@ -198,7 +198,7 @@ async function handleAuthAction() {
     authMessage.style.display = 'none';
     
     if (!email || !password) {
-        authMessage.textContent = 'ईमेल और पासवर्ड आवश्यक हैं।';
+        authMessage.textContent = 'Email and password are required.';
         authMessage.style.display = 'block';
         return;
     }
@@ -219,12 +219,12 @@ async function handleAuthAction() {
     const { data, error } = await authPromise;
 
     if (error) {
-        authMessage.textContent = `त्रुटि: ${error.message}`;
+        authMessage.textContent = `Error: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Auth Error:", error);
     } else if (actionType === 'signup' && !data.user) {
-        authMessage.textContent = 'सफलतापूर्वक साइन अप किया गया! लॉग इन करने से पहले अपने अकाउंट की पुष्टि करने के लिए कृपया अपना ईमेल देखें।';
-        authMessage.style.color = 'var(--success)';
+        authMessage.textContent = 'Successfully signed up! Please check your email to confirm your account before logging in.';
+        authMessage.style.color = 'var(--accent)';
         authMessage.style.display = 'block';
         toggleAuthMode('login'); 
     }
@@ -239,7 +239,7 @@ async function signInWithGoogle() {
     });
 
     if (error) {
-        authMessage.textContent = `Google साइन-इन त्रुटि: ${error.message}`;
+        authMessage.textContent = `Google Sign-in Error: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Google Auth Error:", error);
     }
@@ -537,12 +537,12 @@ async function saveCodeChanges() {
         console.log("Project changes saved successfully to Storage and DB:", currentProject.name);
         document.getElementById('editor-project-name').textContent = `${currentProject.name} (सेव हो गया!)`;
         setTimeout(() => {
-            document.getElementById('editor-project-name').textContent = `एडिटिंग: ${currentProject.name}`;
+            document.getElementById('editor-project-name').textContent = `Editing: ${currentProject.name}`;
         }, 2000);
         
     } catch (e) {
         console.error("Error saving changes:", e);
-        document.getElementById('editor-project-name').textContent = `❌ सेव त्रुटि: ${e.message}`;
+        document.getElementById('editor-project-name').textContent = `❌ Save Error: ${e.message}`;
     }
 }
 
@@ -710,7 +710,7 @@ async function openEditor(projectId) {
         editorCss.value = css;
         editorJs.value = js;
         
-        editorProjectName.textContent = `एडिटिंग: ${project.name}`;
+        editorProjectName.textContent = `Editing: ${project.name}`;
         
     } else {
         // New upload/edit
@@ -718,7 +718,7 @@ async function openEditor(projectId) {
         editorHtml.value = uploadedFilesMap.get('index.html') || '';
         editorCss.value = uploadedFilesMap.get('style.css') || '';
         editorJs.value = uploadedFilesMap.get('script.js') || '';
-        editorProjectName.textContent = `एडिटिंग: New Upload`;
+        editorProjectName.textContent = `Editing: New Upload`;
     }
     
     // Update preview after content is loaded/set
@@ -743,7 +743,7 @@ async function launchProject(projectId) {
     ]);
     
     fullscreenFrame.src = getPreviewUrl(html, css, js);
-    previewProjectName.textContent = `फुलस्क्रीन: ${project.name}`;
+    previewProjectName.textContent = `Project Preview: ${project.name}`;
 }
 
 
