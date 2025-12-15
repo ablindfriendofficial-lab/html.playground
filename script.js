@@ -271,7 +271,7 @@ window.userSignOut = async function() {
     }
 }
 
-// --- STORAGE HELPER FUNCTIONS (UNCHANGED - used ONLY by Save/Delete) ---
+// --- STORAGE HELPER FUNCTIONS (UNCHANGED) ---
 
 async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
     if (!content) return null; 
@@ -329,7 +329,7 @@ function getPreviewUrl(htmlContent, cssContent, jsContent) {
 }
 
 
-// --- DATA / SUPABASE FUNCTIONS (UNCHANGED) ---
+// --- DATA / SUPABASE FUNCTIONS ---
 
 function loadProjects() {
     if (supabaseChannel) {
@@ -689,7 +689,6 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
  * Loads project paths from ID, downloads content, and opens editor.
  */
 window.openEditor = async function(projectId) {
-    switchView('view-workspace');
     editorHtml.value = '';
     editorCss.value = '';
     editorJs.value = '';
@@ -821,7 +820,7 @@ function switchEditorTab(tabId) {
 }
 
 
-// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES) ---
+// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES - IMPROVED) ---
 
 function resetUploadState() {
     uploadedFilesMap.clear();
@@ -885,6 +884,7 @@ window.addEventListener('load', () => {
     if (folderInput) folderInput.addEventListener('change', (e) => processFiles(e.target.files));
     if (fileInput) fileInput.addEventListener('change', (e) => processFiles(e.target.files));
     
+    // Drag/Drop Listeners
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
         if (dropZone) dropZone.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
     });
@@ -908,21 +908,22 @@ window.addEventListener('load', () => {
 
 /**
  * Handles processing files from any input source (File/Folder dialog or Drag-and-Drop).
- * This function handles LOCAL file reading.
+ * IMPROVEMENT: Simplified file extraction logic.
  */
 async function processFiles(input) {
     try {
         let newFiles = [];
         
-        // Logic to extract files from DataTransferList (Drag-Drop) or FileList (Input)
+        // 1. Extract files reliably from various inputs (FileList or DataTransferItemList)
         if (input instanceof DataTransferItemList) {
             for (let i = 0; i < input.length; i++) {
+                // Drag-and-drop items need to be converted to File objects
                 if (input[i].kind === 'file') {
                     const file = input[i].getAsFile();
                     if (file) newFiles.push(file);
                 }
             }
-        } else if (input) {
+        } else if (input instanceof FileList || Array.isArray(input)) {
             newFiles = Array.from(input);
         }
 
@@ -931,21 +932,21 @@ async function processFiles(input) {
         const readPromises = newFiles.map(file => {
             return new Promise((resolve) => {
                 // Ignore hidden system files
-                if (file.name.startsWith('.') || file.name === '.DS_Store') return resolve();
+                if (!file || file.name.startsWith('.')) return resolve();
 
-                const pathSegments = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [file.name];
-                const filenameKey = pathSegments.pop().toLowerCase();
+                // Get filename (handling folder path if present)
+                const filename = (file.webkitRelativePath || file.name).split('/').pop().toLowerCase();
                 
                 // Only process the required file types
-                if (filenameKey === 'index.html' || filenameKey === 'style.css' || filenameKey === 'script.js') {
+                if (filename === 'index.html' || filename === 'style.css' || filename === 'script.js') {
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                        uploadedFilesMap.set(filenameKey, e.target.result);
+                        uploadedFilesMap.set(filename, e.target.result);
                         resolve();
                     };
                     reader.onerror = (e) => {
                         console.error(`Error reading file ${file.name}:`, e);
-                        resolve(); // Resolve even on error to keep processing other files
+                        resolve(); 
                     }; 
                     reader.readAsText(file);
                 } else {
@@ -956,6 +957,7 @@ async function processFiles(input) {
 
         await Promise.all(readPromises);
         
+        // Reset and update UI state
         currentProject.id = null;
         currentProject.name = 'New Upload';
         
@@ -964,7 +966,7 @@ async function processFiles(input) {
         updateMiniList(); 
         
         // Immediately trigger local preview after successful local upload
-        if (currentProject.html) {
+        if (uploadedFilesMap.get('index.html')) {
              openEditor(null); // Open the editor/preview with local files
         }
 
