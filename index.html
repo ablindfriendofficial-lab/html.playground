@@ -95,7 +95,7 @@
             </div>
 
             <!-- Mini List -->
-            <div class="upload-file-list" id="mini-file-list" style="display:none;"></div>
+            <div class="upload-file-list" id="mini-file-list" style="display:none; text-align: left; width: 100%; margin-top: 10px;"></div>
             <div id="file-count" style="color: var(--text-dim); font-size: 0.8rem; margin-top: 5px;"></div>
 
             <!-- Error Box -->
@@ -108,19 +108,32 @@
                 <!-- Buttons appear here -->
             </div>
             
-            <div style="display: flex; gap: 10px; margin-top: 20px; width: 100%; max-width: 400px;">
-                <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="flex: 1;">
-                    <span style="font-size: 1.2rem;">🗃️</span> See Saved
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px; width: 100%;">
+                
+                <!-- NEW: Preview/Edit Button -->
+                <button id="open-editor-btn" class="btn-base btn-primary" disabled onclick="openEditor(null)">
+                    Preview / Edit Code
                 </button>
-                <button class="btn-base btn-danger" onclick="resetUploadState()" style="flex: 1;">
-                    <span style="font-size: 1.2rem;">🗑️</span> Clear Uploads
+                
+                <!-- Save Button -->
+                <button id="save-project-btn" class="btn-base btn-success" disabled onclick="saveProject()">
+                    💾 Save Project to Supabase
                 </button>
+
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="flex: 1;">
+                        <span style="font-size: 1.2rem;">🗃️</span> See Saved
+                    </button>
+                    <button class="btn-base btn-danger" onclick="resetUploadState()" style="flex: 1;">
+                        <span style="font-size: 1.2rem;">🗑️</span> Clear Uploads
+                    </button>
+                </div>
             </div>
 
 
             <!-- Inputs -->
-            <input type="file" id="file-input" multiple>
-            <input type="file" id="folder-input" webkitdirectory directory multiple>
+            <input type="file" id="file-input" multiple style="display: none;">
+            <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
         </div>
     </div>
 
@@ -230,4 +243,5 @@
     <script src="script.js"></script> 
 </body>
 </html>
+
 
