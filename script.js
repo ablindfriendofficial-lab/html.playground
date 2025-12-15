@@ -106,6 +106,7 @@ function switchView(viewId) {
 async function initSupabase() {
     try {
         // 1. Initialize Supabase Client
+        // Check if window.supabase is available (loaded via CDN)
         if (!window.supabase) {
             console.error("Supabase CDN not loaded. Initialization failed.");
             document.getElementById('loading-spinner').textContent = "❌ Supabase library missing.";
@@ -138,9 +139,12 @@ async function initSupabase() {
 
         if (session) {
             handleAuthChange(session);
+            // After successful session handling, set initial view without pushing state
             navigate(initialHash, false); 
         } else {
+            // No session found, show auth view
             handleAuthChange(null);
+            // For auth screen, we don't need to push state initially
             navigate('view-auth', false);
         }
 
@@ -150,7 +154,7 @@ async function initSupabase() {
     }
 }
 
-// --- HISTORY API LISTENER ---
+// --- HISTORY API LISTENER (Handles browser back/forward buttons) ---
 
 function _switchViewVisual(viewId) {
     const views = {
@@ -174,15 +178,20 @@ function _switchViewVisual(viewId) {
 
 function navigate(viewId, pushState = true) {
     if (pushState && window.location.hash !== `#${viewId}`) {
+        // Push a new state only if the current hash is different
         history.pushState({ viewId: viewId }, '', `#${viewId}`);
     }
     _switchViewVisual(viewId);
 }
 
 window.addEventListener('popstate', (event) => {
+    // Read the viewId from the history state, default to 'view-auth' if state is null
     const viewId = event.state && event.state.viewId ? event.state.viewId : (userId ? 'view-upload' : 'view-auth');
+    
+    // Navigate without pushing a new state (replace current hash)
     navigate(viewId, false);
 });
+
 
 // --- AUTH LOGIC (UNCHANGED) ---
 
@@ -197,6 +206,7 @@ function handleAuthChange(session) {
             welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
         }
         
+        // Navigate to upload view after login
         navigate('view-upload', true); 
     } else {
         userId = null;
@@ -223,7 +233,7 @@ function toggleAuthMode(setMode) {
         if (signupBtn) signupBtn.style.display = 'none';
         if (signupBtn) signupBtn.classList.remove('btn-primary');
         if (signupBtn) signupBtn.classList.add('btn-secondary');
-    } else { 
+    } else { // authMode === 'signup'
         if (signupBtn) signupBtn.style.display = 'flex';
         if (signupBtn) signupBtn.classList.add('btn-primary');
         if (signupBtn) signupBtn.classList.remove('btn-secondary');
@@ -237,6 +247,10 @@ function toggleAuthMode(setMode) {
     if (authMessage) authMessage.style.display = 'none';
 }
 
+/**
+ * Handles both Login and Signup actions based on the current authMode state.
+ * Attached to window object to be accessible from HTML onclick.
+ */
 window.handleAuthAction = async function() { 
     const actionType = authMode; 
     const email = authEmail.value;
@@ -302,7 +316,7 @@ window.userSignOut = async function() {
     }
 }
 
-// --- STORAGE HELPER FUNCTIONS ---
+// --- STORAGE HELPER FUNCTIONS (UNCHANGED) ---
 
 async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
     if (!content) return null; 
@@ -338,6 +352,9 @@ async function downloadStorageFile(bucketName, filePath) {
     return await data.text();
 }
 
+/**
+ * Creates a local Blob URL for immediate preview (LOCAL FUNCTIONALITY)
+ */
 function getPreviewUrl(htmlContent, cssContent, jsContent) {
     const combinedHtml = `
         <!DOCTYPE html>
@@ -382,7 +399,7 @@ function loadProjects() {
             }
         });
 
-    // 2. Initial fetch
+    // 2. Initial fetch: Call fetchProjects directly after setting up the listener
     fetchProjects(); 
 }
 
@@ -466,6 +483,7 @@ window.confirmSaveProject = async function() {
     const projectPathBase = `${userId}/${projectName}`;
     
     try {
+        // 1. Upload Files to Storage (THE ONLY PLACE INSERT/UPLOAD RUNS)
         const htmlPath = await uploadProjectComponent(
             BUCKET_NAME, 
             `${projectPathBase}/index.html`, 
@@ -485,6 +503,7 @@ window.confirmSaveProject = async function() {
             'application/javascript'
         );
         
+        // 2. Save File Paths to Database (Replacing original content save)
         const dataToSave = {
             user_id: userId,
             name: projectName,
@@ -500,6 +519,7 @@ window.confirmSaveProject = async function() {
 
         if (error) throw error;
 
+        // Update local state with new paths
         currentProject.id = data[0].id;
         currentProject.name = projectName;
         currentProject.htmlPath = htmlPath;
@@ -522,6 +542,7 @@ window.saveCodeChanges = async function() {
         return;
     }
 
+    // 1. Get updated content from the editor
     const newHtml = editorHtml.value;
     const newCss = editorCss.value;
     const newJs = editorJs.value;
@@ -529,6 +550,7 @@ window.saveCodeChanges = async function() {
     const pathBase = `${userId}/${currentProject.name}`;
 
     try {
+        // 2. Update Files in Storage (Storage Update Logic)
         const updatedHtmlPath = await uploadProjectComponent(
             BUCKET_NAME, 
             currentProject.htmlPath || `${pathBase}/index.html`, 
@@ -548,6 +570,7 @@ window.saveCodeChanges = async function() {
             'application/javascript'
         );
         
+        // 3. Update paths in the Database
         const { error } = await supabase
             .from('projects')
             .update({
@@ -560,6 +583,7 @@ window.saveCodeChanges = async function() {
 
         if (error) throw error;
         
+        // 4. Update local state
         currentProject.html = newHtml;
         currentProject.css = newCss;
         currentProject.js = newJs;
@@ -567,6 +591,7 @@ window.saveCodeChanges = async function() {
         currentProject.cssPath = updatedCssPath;
         currentProject.jsPath = updatedJsPath;
 
+        // Update the local projects list
         const index = projectsList.findIndex(p => p.id === currentProject.id);
         if (index !== -1) {
             projectsList[index].htmlPath = updatedHtmlPath;
@@ -574,7 +599,7 @@ window.saveCodeChanges = async function() {
             projectsList[index].jsPath = updatedJsPath;
         }
 
-        updatePreview();
+        updatePreview(); // Update preview with new content
 
         console.log("Project changes saved successfully to Storage and DB:", currentProject.name);
         document.getElementById('editor-project-name').textContent = `${currentProject.name} (Saved!)`;
@@ -587,6 +612,8 @@ window.saveCodeChanges = async function() {
         document.getElementById('editor-project-name').textContent = `❌ Save Error: ${e.message}`;
     }
 }
+
+// --- DELETE LOGIC (UPDATED FOR STORAGE DELETE) ---
 
 window.deleteProject = function(projectId, projectName) {
     if (!userId) {
@@ -622,6 +649,7 @@ window.confirmDelete = async function() {
     const filesToDelete = [project.htmlPath, project.cssPath, project.jsPath].filter(p => p);
 
     try {
+        // 1. Delete Files from Storage 
         if (filesToDelete.length > 0) {
             const { error: storageError } = await supabase.storage
                 .from(BUCKET_NAME)
@@ -634,6 +662,7 @@ window.confirmDelete = async function() {
             }
         }
 
+        // 2. Delete Record from Database
         const { error: dbError } = await supabase
             .from('projects')
             .delete()
@@ -649,6 +678,8 @@ window.confirmDelete = async function() {
     }
 }
 
+// --- DOWNLOAD LOGIC (JSZip - UPDATED FOR STORAGE DOWNLOAD) ---
+
 window.downloadProjectAsZip = async function(projectId, projectName) {
     const project = projectsList.find(p => p.id === projectId);
     if (!project) {
@@ -663,6 +694,7 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
 
     const zip = new JSZip();
 
+    // --- UPDATED: Download content from Storage before zipping ---
     const [htmlContent, cssContent, jsContent] = await Promise.all([
         downloadStorageFile(BUCKET_NAME, project.htmlPath),
         downloadStorageFile(BUCKET_NAME, project.cssPath),
@@ -696,38 +728,46 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
     }
 }
 
-// --- EDITOR / PREVIEW LOGIC ---
+// --- EDITOR / PREVIEW LOGIC (Updated to pull content from local state first) ---
 
+/**
+ * Loads project paths from ID, downloads content, and opens editor.
+ */
 window.openEditor = async function(projectId) {
     editorHtml.value = '';
     editorCss.value = '';
     editorJs.value = '';
     editorProjectName.textContent = 'Loading...';
     
+    // Clear paths when opening editor
     currentProject.htmlPath = null;
     currentProject.cssPath = null;
     currentProject.jsPath = null;
 
 
     if (projectId) {
+        // --- Existing Saved Project Logic (Requires Storage Download) ---
         const project = projectsList.find(p => p.id === projectId);
         if (!project) return;
         
         currentProject.name = project.name;
         currentProject.id = project.id;
 
+        // 1. Set paths/metadata
         currentProject.htmlPath = project.htmlPath;
         currentProject.cssPath = project.cssPath;
         currentProject.jsPath = project.jsPath;
 
         editorProjectName.textContent = `Downloading: ${project.name}`;
         
+        // 2. Download content from Storage using paths
         const [html, css, js] = await Promise.all([
             downloadStorageFile(BUCKET_NAME, project.htmlPath),
             downloadStorageFile(BUCKET_NAME, project.cssPath),
             downloadStorageFile(BUCKET_NAME, project.jsPath)
         ]);
 
+        // 3. Populate state and editor
         currentProject.html = html;
         currentProject.css = css;
         currentProject.js = js;
@@ -739,12 +779,12 @@ window.openEditor = async function(projectId) {
         editorProjectName.textContent = `Editing: ${project.name}`;
         
     } else {
-        // LOCAL PREVIEW LOGIC
-        // We use normalization to find the files even if named differently
+        // --- Local Upload Logic (Uses purely local state) ---
+        // This is called by the "Preview/Edit Code" button in view-upload
         currentProject.name = 'New Upload';
         currentProject.id = null;
         
-        // This is the normalized key logic
+        // Content comes directly from the uploadedFilesMap state
         editorHtml.value = uploadedFilesMap.get('index.html') || '';
         editorCss.value = uploadedFilesMap.get('style.css') || '';
         editorJs.value = uploadedFilesMap.get('script.js') || '';
@@ -756,11 +796,16 @@ window.openEditor = async function(projectId) {
         editorProjectName.textContent = `Editing: New Upload`;
     }
     
+    // Update preview after content is loaded/set
     switchEditorTab(currentActiveTab);
     updatePreview();
+    // Use navigate for history support
     navigate('view-workspace', true); 
 }
 
+/**
+ * Loads project paths from ID, downloads content, and opens fullscreen preview.
+ */
 window.launchProject = async function(projectId) {
     const project = projectsList.find(p => p.id === projectId);
     if (!project) return;
@@ -775,11 +820,13 @@ window.launchProject = async function(projectId) {
     
     fullscreenFrame.src = getPreviewUrl(html, css, js);
     previewProjectName.textContent = `Project Preview: ${project.name}`;
+    // Use navigate for history support
     navigate('view-fullscreen', true); 
 }
 
 
 window.updatePreview = function() {
+    // Get current content from the editor fields
     const htmlContent = editorHtml.value;
     const cssContent = editorCss.value;
     const jsContent = editorJs.value;
@@ -787,12 +834,16 @@ window.updatePreview = function() {
     previewFrame.src = getPreviewUrl(htmlContent, cssContent, jsContent);
 }
 
+// Re-exposed globally for HTML button call
 window.refreshPreview = window.updatePreview;
 window.toggleFullscreen = function(forceExit) {
     if (forceExit) {
+        // Use navigate for history support
         navigate('view-projects', true);
     } else {
+        // Assuming the user meant a simple switch to fullscreen frame
         fullscreenFrame.src = previewFrame.src;
+        // Use navigate for history support
         navigate('view-fullscreen', true);
     }
 }
@@ -819,7 +870,7 @@ function switchEditorTab(tabId) {
 }
 
 
-// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES - FIXED) ---
+// --- UPLOAD / FILE HANDLING LOGIC (LOCAL FILES - IMPROVED) ---
 
 function resetUploadState() {
     uploadedFilesMap.clear();
@@ -837,6 +888,7 @@ function validateProject() {
     
     const canSave = hasHtml;
     
+    // Buttons are ENABLED only if HTML is present
     if (saveProjectBtn) saveProjectBtn.disabled = !canSave;
     if (openEditorBtn) openEditorBtn.disabled = !canSave; 
     
@@ -882,9 +934,11 @@ function updateMiniList() {
 window.addEventListener('load', () => {
     initSupabase();
     
+    // --- Event Listeners ---
     if (folderInput) folderInput.addEventListener('change', (e) => processFiles(e.target.files));
     if (fileInput) fileInput.addEventListener('change', (e) => processFiles(e.target.files));
     
+    // Drag/Drop Listeners
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
         if (dropZone) dropZone.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
     });
@@ -904,6 +958,11 @@ window.addEventListener('load', () => {
             confirmSaveProject();
         }
     });
+
+    // --- FIX: Ensure buttons call the correct functions globally ---
+    // The functions are attached to window.* above, but adding listeners for redundancy
+    if (loginBtn) loginBtn.addEventListener('click', handleAuthAction);
+    if (signupBtn) signupBtn.addEventListener('click', handleAuthAction);
 });
 
 /**
