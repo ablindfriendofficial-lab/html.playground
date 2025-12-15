@@ -2,7 +2,7 @@
 
 // --- SUPABASE CONFIGURATION ---
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
-// ANCHOR: The confirmed key provided by the user
+// ANCHOR: The confirmed key provided by the user (Used for initialization)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
 const BUCKET_NAME = 'ABC_assets'; // *** YOUR STORAGE BUCKET NAME ***
 
@@ -231,6 +231,7 @@ window.handleAuthAction = async function() {
     const { data, error } = await authPromise;
 
     if (error) {
+        // ERROR: If API key is invalid, the error will be caught here.
         authMessage.textContent = `Login Error: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Auth Error:", error);
@@ -300,6 +301,9 @@ async function downloadStorageFile(bucketName, filePath) {
     return await data.text();
 }
 
+/**
+ * Creates a local Blob URL for immediate preview (LOCAL FUNCTIONALITY)
+ */
 function getPreviewUrl(htmlContent, cssContent, jsContent) {
     const combinedHtml = `
         <!DOCTYPE html>
@@ -319,7 +323,7 @@ function getPreviewUrl(htmlContent, cssContent, jsContent) {
 }
 
 
-// --- DATA / SUPABASE FUNCTIONS (UNCHANGED from previous update) ---
+// --- DATA / SUPABASE FUNCTIONS ---
 
 function loadProjects() {
     if (supabaseChannel) {
@@ -399,10 +403,10 @@ function renderProjectsList() {
     });
 }
 
-// --- SAVE/UPLOAD LOGIC (UPDATED FOR STORAGE) ---
+// --- SAVE/UPLOAD LOGIC (Storage Logic runs ONLY here) ---
 
 function saveProject() {
-    if (!currentProject.html && !currentProject.css && !currentProject.js) { // Check for content, not paths here
+    if (!currentProject.html && !currentProject.css && !currentProject.js) { 
         console.error("Cannot save: Project content is empty.");
         return;
     }
@@ -428,7 +432,7 @@ window.confirmSaveProject = async function() {
     const projectPathBase = `${userId}/${projectName}`;
     
     try {
-        // 1. Upload Files to Storage (The storage functionality the user requested)
+        // 1. Upload Files to Storage (THE ONLY PLACE INSERT/UPLOAD RUNS)
         const htmlPath = await uploadProjectComponent(
             BUCKET_NAME, 
             `${projectPathBase}/index.html`, 
@@ -448,7 +452,7 @@ window.confirmSaveProject = async function() {
             'application/javascript'
         );
         
-        // 2. Save File Paths to Database (Replacing original content save)
+        // 2. Save File Paths to Database
         const dataToSave = {
             user_id: userId,
             name: projectName,
@@ -495,7 +499,7 @@ window.saveCodeChanges = async function() {
     const pathBase = `${userId}/${currentProject.name}`;
 
     try {
-        // 2. Update Files in Storage (The storage functionality the user requested)
+        // 2. Update Files in Storage (Storage Update Logic)
         const updatedHtmlPath = await uploadProjectComponent(
             BUCKET_NAME, 
             currentProject.htmlPath || `${pathBase}/index.html`, 
@@ -515,7 +519,7 @@ window.saveCodeChanges = async function() {
             'application/javascript'
         );
         
-        // 3. Update paths in the Database (in case any path was null previously)
+        // 3. Update paths in the Database
         const { error } = await supabase
             .from('projects')
             .update({
@@ -594,7 +598,7 @@ window.confirmDelete = async function() {
     const filesToDelete = [project.htmlPath, project.cssPath, project.jsPath].filter(p => p);
 
     try {
-        // 1. Delete Files from Storage (The storage functionality the user requested)
+        // 1. Delete Files from Storage 
         if (filesToDelete.length > 0) {
             const { error: storageError } = await supabase.storage
                 .from(BUCKET_NAME)
@@ -639,7 +643,7 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
 
     const zip = new JSZip();
 
-    // --- UPDATED: Download content from Storage before zipping ---
+    // --- Download content from Storage before zipping ---
     const [htmlContent, cssContent, jsContent] = await Promise.all([
         downloadStorageFile(BUCKET_NAME, project.htmlPath),
         downloadStorageFile(BUCKET_NAME, project.cssPath),
@@ -673,13 +677,13 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
     }
 }
 
-// --- EDITOR / PREVIEW LOGIC (UPDATED FOR STORAGE DOWNLOAD) ---
+// --- EDITOR / PREVIEW LOGIC (Updated to pull content from local state first) ---
 
 /**
  * Loads project paths from ID, downloads content, and opens editor.
  */
 window.openEditor = async function(projectId) {
-    switchView('view-workspace');
+    switchView('view-editor'); // Switch to editor view first
     editorHtml.value = '';
     editorCss.value = '';
     editorJs.value = '';
@@ -692,17 +696,17 @@ window.openEditor = async function(projectId) {
 
 
     if (projectId) {
+        // --- Existing Saved Project Logic (Requires Storage Download) ---
         const project = projectsList.find(p => p.id === projectId);
         if (!project) return;
         
+        currentProject.name = project.name;
+        currentProject.id = project.id;
+
         // 1. Set paths/metadata
-        currentProject = { 
-            ...project, 
-            html: '', css: '', js: '', // Clear content temporarily
-            htmlPath: project.htmlPath,
-            cssPath: project.cssPath,
-            jsPath: project.jsPath
-        };
+        currentProject.htmlPath = project.htmlPath;
+        currentProject.cssPath = project.cssPath;
+        currentProject.jsPath = project.jsPath;
 
         editorProjectName.textContent = `Downloading: ${project.name}`;
         
@@ -725,17 +729,26 @@ window.openEditor = async function(projectId) {
         editorProjectName.textContent = `Editing: ${project.name}`;
         
     } else {
-        // New upload/edit
+        // --- Local Upload Logic (Uses purely local state) ---
         currentProject.name = 'New Upload';
+        currentProject.id = null;
+        
+        // Content comes directly from the uploadedFilesMap state
         editorHtml.value = uploadedFilesMap.get('index.html') || '';
         editorCss.value = uploadedFilesMap.get('style.css') || '';
         editorJs.value = uploadedFilesMap.get('script.js') || '';
+        
+        currentProject.html = editorHtml.value;
+        currentProject.css = editorCss.value;
+        currentProject.js = editorJs.value;
+        
         editorProjectName.textContent = `Editing: New Upload`;
     }
     
     // Update preview after content is loaded/set
     switchEditorTab(currentActiveTab);
     updatePreview();
+    switchView('view-workspace'); // Show the workspace which contains the editor
 }
 
 /**
@@ -758,7 +771,10 @@ window.launchProject = async function(projectId) {
     previewProjectName.textContent = `Project Preview: ${project.name}`;
 }
 
-
+/**
+ * Refreshes the preview iframe using the current content in the editor.
+ * (LOCAL PREVIEW FUNCTIONALITY)
+ */
 window.updatePreview = function() {
     // Get current content from the editor fields
     const htmlContent = editorHtml.value;
@@ -767,6 +783,20 @@ window.updatePreview = function() {
 
     previewFrame.src = getPreviewUrl(htmlContent, cssContent, jsContent);
 }
+
+// Re-exposed globally for HTML button call
+window.refreshPreview = window.updatePreview;
+window.toggleFullscreen = function(forceExit) {
+    if (forceExit) {
+        switchView('view-projects');
+    } else {
+        // This function needs definition, but using launchProject logic for now
+        // Assuming the user meant a simple switch to fullscreen frame
+        fullscreenFrame.src = previewFrame.src;
+        switchView('view-fullscreen');
+    }
+}
+
 
 function switchEditorTab(tabId) {
     currentActiveTab = tabId;
