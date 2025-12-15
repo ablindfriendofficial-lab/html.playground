@@ -31,7 +31,7 @@
         </div>
     </div>
 
-    <!-- Upload Screen (Buttons Fixed Here) -->
+    <!-- Upload Screen -->
     <div id="view-upload" class="view-section center-screen">
         <header class="toolbar">
             <div class="toolbar-group"><span>Welcome!</span></div>
@@ -40,30 +40,31 @@
 
         <div class="action-box" id="drop-zone">
             <span class="icon-large">📂</span>
-            <h2>Upload New Project</h2>
+            <h2>Upload Project Files</h2>
             
             <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
                 <label for="file-input" class="btn-base btn-primary" style="justify-content: center;">+ Add Files</label>
                 <label for="folder-input" class="btn-base btn-secondary" style="justify-content: center;">+ Add Folder</label>
             </div>
 
+            <!-- List of uploaded files -->
             <ul id="mini-file-list" style="text-align: left; width: 100%; margin-top: 10px; list-style: none; padding: 0;"></ul>
             <div id="file-count" style="color: var(--text-dim); font-size: 0.8rem;"></div>
 
-            <!-- Warning Box (Will be hidden by JS now) -->
-            <div id="error-display" style="margin-top: 10px; color: var(--warning);">
-                <strong>⚠️ Still Missing:</strong>
-                <ul id="missing-list" style="padding-left: 20px;"></ul>
+            <!-- SMART WARNING BOX (Hidden by default) -->
+            <div id="error-display" style="margin-top: 15px; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); padding: 10px; border-radius: 8px; display: none;">
+                <strong style="color: var(--warning);">⚠️ Still Missing:</strong>
+                <ul id="missing-list" style="padding-left: 20px; color: var(--text-dim); margin-top: 5px;"></ul>
             </div>
             
             <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px; width: 100%;">
                 
-                <!-- PREVIEW & SAVE BUTTONS (Make sure these are here!) -->
-                <button id="open-editor-btn" class="btn-base btn-primary" disabled onclick="openEditor(null)">
+                <!-- Buttons are PERMANENTLY visible/enabled -->
+                <button id="open-editor-btn" class="btn-base btn-primary" onclick="openEditor(null)">
                     👁️ Preview / Edit Code
                 </button>
                 
-                <button id="save-project-btn" class="btn-base btn-success" disabled onclick="saveProject()">
+                <button id="save-project-btn" class="btn-base btn-success" onclick="saveProject()">
                     💾 Save to Supabase
                 </button>
 
@@ -78,7 +79,7 @@
         </div>
     </div>
 
-    <!-- Other Views (Projects, Workspace, etc.) -->
+    <!-- Projects List View -->
     <div id="view-projects" class="view-section">
         <header class="toolbar">
             <button class="btn-base btn-secondary" onclick="switchView('view-upload')">← Back</button>
@@ -87,6 +88,7 @@
         <div class="workspace-body center-screen"><div id="projects-list"></div></div>
     </div>
 
+    <!-- Workspace/Preview View -->
     <div id="view-workspace" class="view-section">
         <header class="toolbar">
             <button class="btn-base btn-secondary" onclick="switchView('view-upload')">← Back</button>
@@ -96,6 +98,7 @@
         <div class="workspace-body"><iframe id="preview-frame" style="width:100%; height:100%; border:none;"></iframe></div>
     </div>
 
+    <!-- Save Modal -->
     <div id="save-modal-overlay" class="view-section center-screen" style="z-index: 1000; background: rgba(0,0,0,0.8); display: none;">
         <div class="action-box">
             <h3>Name Project</h3>
