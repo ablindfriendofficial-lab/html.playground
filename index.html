@@ -109,10 +109,10 @@
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 20px; width: 100%; max-width: 400px;">
-                <button class="btn-base btn-secondary" style="flex: 1;" onclick="switchView('view-projects')">
+                <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="flex: 1;">
                     <span style="font-size: 1.2rem;">🗃️</span> See Saved
                 </button>
-                <button class="btn-base btn-danger" style="flex: 1;" onclick="resetUploadState()">
+                <button class="btn-base btn-danger" onclick="resetUploadState()" style="flex: 1;">
                     <span style="font-size: 1.2rem;">🗑️</span> Clear Uploads
                 </button>
             </div>
@@ -227,7 +227,7 @@
     </div>
 
     <!-- JavaScript फ़ाइल को लोड करें -->
-    <script type="module" src="script.js"></script> 
+    <script src="script.js"></script> 
 </body>
 </html>
 
