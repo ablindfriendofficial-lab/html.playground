@@ -48,8 +48,8 @@ const miniFileList = document.getElementById('mini-file-list');
 const fileCountDisplay = document.getElementById('file-count');
 const errorDisplay = document.getElementById('error-display');
 const missingList = document.getElementById('missing-list');
-const saveProjectBtn = document.getElementById('save-project-btn'); // Added Save button reference
-const openEditorBtn = document.getElementById('open-editor-btn'); // Added Open editor button reference
+const saveProjectBtn = document.getElementById('save-project-btn'); 
+const openEditorBtn = document.getElementById('open-editor-btn'); 
 
 const projectsListContainer = document.getElementById('projects-list');
 const noProjectsMessage = document.getElementById('no-projects-message');
@@ -109,6 +109,7 @@ async function initSupabase() {
         
         // 2. Set up the Authentication Listener
         supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth State Change:', event);
             if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRFESHED') {
                 handleAuthChange(session);
             } else if (event === 'SIGNED_OUT') {
@@ -117,7 +118,14 @@ async function initSupabase() {
         });
         
         // 3. Immediately check the initial session status
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+             console.error("Error checking session:", error);
+             document.getElementById('loading-spinner').textContent = "❌ Session check error.";
+             return;
+        }
+
         if (session) {
             handleAuthChange(session);
         } else {
@@ -126,8 +134,8 @@ async function initSupabase() {
         }
 
     } catch (error) {
-        console.error("Supabase initialization failed:", error.message);
-        document.getElementById('loading-spinner').textContent = "❌ शुरू करने में विफल";
+        console.error("Supabase initialization failed (CRITICAL):", error.message);
+        document.getElementById('loading-spinner').textContent = "❌ Initialization failed.";
     }
 }
 
@@ -156,7 +164,6 @@ function handleAuthChange(session) {
 }
 
 function toggleAuthMode(setMode) {
-    // ... (unchanged auth logic)
     if (setMode) {
         authMode = setMode;
     } else {
@@ -190,8 +197,7 @@ function toggleAuthMode(setMode) {
 /**
  * Handles both Login and Signup actions based on the current authMode state.
  */
-async function handleAuthAction() {
-    // This function MUST be global and correctly linked to the button
+window.handleAuthAction = async function() { // Explicitly attach to window
     const actionType = authMode; 
     const email = authEmail.value;
     const password = authPassword.value;
@@ -205,8 +211,12 @@ async function handleAuthAction() {
 
     let authPromise;
     if (actionType === 'login') {
+        authMessage.textContent = 'Logging in...';
+        authMessage.style.display = 'block';
         authPromise = supabase.auth.signInWithPassword({ email, password });
     } else if (actionType === 'signup') {
+        authMessage.textContent = 'Signing up...';
+        authMessage.style.display = 'block';
         authPromise = supabase.auth.signUp({ 
             email, 
             password,
@@ -219,7 +229,7 @@ async function handleAuthAction() {
     const { data, error } = await authPromise;
 
     if (error) {
-        authMessage.textContent = `Error: ${error.message}`;
+        authMessage.textContent = `Login Error: ${error.message}`;
         authMessage.style.display = 'block';
         console.error("Auth Error:", error);
     } else if (actionType === 'signup' && !data.user) {
@@ -230,7 +240,7 @@ async function handleAuthAction() {
     }
 }
 
-async function signInWithGoogle() {
+window.signInWithGoogle = async function() {
     const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -245,14 +255,14 @@ async function signInWithGoogle() {
     }
 }
 
-async function userSignOut() {
+window.userSignOut = async function() {
     const { error } = await supabase.auth.signOut();
     if (error) {
         console.error("Logout Error:", error);
     }
 }
 
-// --- STORAGE HELPER FUNCTIONS (UNCHANGED from previous update) ---
+// --- STORAGE HELPER FUNCTIONS (UNCHANGED) ---
 
 async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
     if (!content) return null; 
@@ -307,7 +317,7 @@ function getPreviewUrl(htmlContent, cssContent, jsContent) {
 }
 
 
-// --- DATA / SUPABASE FUNCTIONS (UNCHANGED from previous update, now using Storage Paths) ---
+// --- DATA / SUPABASE FUNCTIONS (UNCHANGED) ---
 
 function loadProjects() {
     if (supabaseChannel) {
@@ -404,7 +414,7 @@ function cancelSave() {
     saveModalOverlay.style.display = 'none';
 }
 
-async function confirmSaveProject() {
+window.confirmSaveProject = async function() {
     const projectName = projectNameInput.value.trim();
     saveModalOverlay.style.display = 'none';
 
@@ -459,17 +469,17 @@ async function confirmSaveProject() {
         currentProject.cssPath = cssPath;
         currentProject.jsPath = jsPath;
         
-        document.getElementById('file-count').textContent = `Project "${projectName}" सेव हो गया!`;
+        document.getElementById('file-count').textContent = `Project "${projectName}" saved!`;
         
         resetUploadState(); 
 
     } catch (e) {
         console.error("Error saving document:", e.message);
-        document.getElementById('file-count').textContent = `❌ सेव करने में विफल: ${e.message}`;
+        document.getElementById('file-count').textContent = `❌ Save Failed: ${e.message}`;
     }
 }
 
-async function saveCodeChanges() {
+window.saveCodeChanges = async function() {
     if (!currentProject.id) {
         console.error("Cannot save changes: Project ID is missing. Please save the project first.");
         return;
@@ -535,7 +545,7 @@ async function saveCodeChanges() {
         updatePreview(); // Update preview with new content
 
         console.log("Project changes saved successfully to Storage and DB:", currentProject.name);
-        document.getElementById('editor-project-name').textContent = `${currentProject.name} (सेव हो गया!)`;
+        document.getElementById('editor-project-name').textContent = `${currentProject.name} (Saved!)`;
         setTimeout(() => {
             document.getElementById('editor-project-name').textContent = `Editing: ${currentProject.name}`;
         }, 2000);
@@ -548,7 +558,7 @@ async function saveCodeChanges() {
 
 // --- DELETE LOGIC (UPDATED FOR STORAGE DELETE) ---
 
-function deleteProject(projectId, projectName) {
+window.deleteProject = function(projectId, projectName) {
     if (!userId) {
         console.error("User not authenticated.");
         return;
@@ -558,12 +568,12 @@ function deleteProject(projectId, projectName) {
     deleteModalOverlay.style.display = 'flex';
 }
 
-function cancelDelete() {
+window.cancelDelete = function() {
     projectIdToDelete = null;
     deleteModalOverlay.style.display = 'none';
 }
 
-async function confirmDelete() {
+window.confirmDelete = async function() {
     if (!projectIdToDelete) {
         cancelDelete();
         return;
@@ -613,7 +623,7 @@ async function confirmDelete() {
 
 // --- DOWNLOAD LOGIC (JSZip - UPDATED FOR STORAGE DOWNLOAD) ---
 
-async function downloadProjectAsZip(projectId, projectName) {
+window.downloadProjectAsZip = async function(projectId, projectName) {
     const project = projectsList.find(p => p.id === projectId);
     if (!project) {
         console.error("Project not found for download.");
@@ -666,7 +676,7 @@ async function downloadProjectAsZip(projectId, projectName) {
 /**
  * Loads project paths from ID, downloads content, and opens editor.
  */
-async function openEditor(projectId) {
+window.openEditor = async function(projectId) {
     switchView('view-workspace');
     editorHtml.value = '';
     editorCss.value = '';
@@ -729,7 +739,7 @@ async function openEditor(projectId) {
 /**
  * Loads project paths from ID, downloads content, and opens fullscreen preview.
  */
-async function launchProject(projectId) {
+window.launchProject = async function(projectId) {
     const project = projectsList.find(p => p.id === projectId);
     if (!project) return;
 
@@ -747,7 +757,7 @@ async function launchProject(projectId) {
 }
 
 
-function updatePreview() {
+window.updatePreview = function() {
     // Get current content from the editor fields
     const htmlContent = editorHtml.value;
     const cssContent = editorCss.value;
@@ -830,7 +840,7 @@ function updateMiniList() {
         });
     }
 
-    fileCountDisplay.textContent = `${count} फ़ाइलें मिलीं।`;
+    fileCountDisplay.textContent = `${count} files found.`;
 }
 
 
@@ -861,8 +871,8 @@ window.addEventListener('load', () => {
         }
     });
 
-    // --- FIX: Ensure buttons call the correct functions (if not done in HTML) ---
-    // Assuming buttons have `onclick` defined in HTML, but adding listeners defensively
+    // --- FIX: Ensure buttons call the correct functions globally ---
+    // The functions are now attached to window.* above, but adding listeners for redundancy
     if (loginBtn) loginBtn.addEventListener('click', handleAuthAction);
     if (signupBtn) signupBtn.addEventListener('click', handleAuthAction);
 });
