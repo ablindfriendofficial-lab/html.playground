@@ -128,6 +128,7 @@ window.switchView = function(viewId) {
 async function initSupabase() {
     try {
         // 1. Initialize Supabase Client
+        // Check if window.supabase is available (loaded via CDN)
         if (!window.supabase) {
             console.error("Supabase CDN not loaded. Initialization failed.");
             document.getElementById('loading-spinner').textContent = "❌ Supabase library missing.";
@@ -711,7 +712,6 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
         downloadLink.download = `${safeFileName}.zip`;
         
         document.body.appendChild(downloadLink);
-        downloadLink.click(); 
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(downloadUrl);
         
@@ -884,8 +884,9 @@ function validateProject() {
     
     const canSave = hasHtml;
     
+    // Buttons are ENABLED only if HTML is present
     if (saveProjectBtn) saveProjectBtn.disabled = !canSave;
-    if (openEditorBtn) openEditorBtn.disabled = !canSave; // Preview button enables only if HTML is present
+    if (openEditorBtn) openEditorBtn.disabled = !canSave; 
     
     const missingUl = missingList ? missingList.querySelector('ul') : null;
     if (missingUl) missingUl.innerHTML = '';
