@@ -1,6 +1,7 @@
 // Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
 // --- SUPABASE CONFIGURATION ---
+// IMPORTANT: Replace these keys with your actual Supabase project details.
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbqOO8IGFwHdU'; 
 const BUCKET_NAME = 'ABC_assets'; // *** YOUR STORAGE BUCKET NAME ***
@@ -196,8 +197,9 @@ function toggleAuthMode(setMode) {
 
 /**
  * Handles both Login and Signup actions based on the current authMode state.
+ * Attached to window object to be accessible from HTML onclick.
  */
-window.handleAuthAction = async function() { // Explicitly attach to window
+window.handleAuthAction = async function() { 
     const actionType = authMode; 
     const email = authEmail.value;
     const password = authPassword.value;
@@ -317,7 +319,7 @@ function getPreviewUrl(htmlContent, cssContent, jsContent) {
 }
 
 
-// --- DATA / SUPABASE FUNCTIONS (UNCHANGED) ---
+// --- DATA / SUPABASE FUNCTIONS (UNCHANGED from previous update) ---
 
 function loadProjects() {
     if (supabaseChannel) {
@@ -870,12 +872,8 @@ window.addEventListener('load', () => {
             confirmSaveProject();
         }
     });
-
-    // --- FIX: Ensure buttons call the correct functions globally ---
-    // The functions are now attached to window.* above, but adding listeners for redundancy
-    if (loginBtn) loginBtn.addEventListener('click', handleAuthAction);
-    if (signupBtn) signupBtn.addEventListener('click', handleAuthAction);
 });
+// --- End of window.addEventListener('load') --
 
 async function processFiles(input) {
     try {
