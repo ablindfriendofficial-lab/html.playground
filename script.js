@@ -27,10 +27,11 @@ let currentProject = {
 let projectsList = []; 
 let projectIdToDelete = null; 
 let authMode = 'login'; // 'login' or 'signup'
-let currentActiveTab = 'html'; // Added for editor state
+let currentActiveTab = 'html'; 
 
 
 // --- DOM Elements ---
+// Ensure all DOM elements are correctly mapped here to avoid 'null' errors
 const viewLoading = document.getElementById('view-loading');
 const viewUpload = document.getElementById('view-upload');
 const viewProjects = document.getElementById('view-projects');
@@ -47,7 +48,8 @@ const miniFileList = document.getElementById('mini-file-list');
 const fileCountDisplay = document.getElementById('file-count');
 const errorDisplay = document.getElementById('error-display');
 const missingList = document.getElementById('missing-list');
-const actionArea = document.getElementById('action-area');
+const saveProjectBtn = document.getElementById('save-project-btn'); // Added Save button reference
+const openEditorBtn = document.getElementById('open-editor-btn'); // Added Open editor button reference
 
 const projectsListContainer = document.getElementById('projects-list');
 const noProjectsMessage = document.getElementById('no-projects-message');
@@ -138,7 +140,9 @@ function handleAuthChange(session) {
         loadProjects(); 
         
         const welcomeText = document.querySelector('#view-upload .toolbar-group span');
-        welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
+        if (welcomeText) {
+            welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
+        }
         
         // Ensure the view switches to upload only after successful login/confirmation
         switchView('view-upload'); 
@@ -162,33 +166,33 @@ function toggleAuthMode(setMode) {
     authTitle.textContent = authMode === 'login' ? 'प्रोजेक्ट्स एक्सेस करने के लिए लॉग इन करें' : 'नया अकाउंट बनाएँ';
     
     if (authMode === 'login') {
-        loginBtn.style.display = 'flex';
-        loginBtn.classList.add('btn-primary');
-        loginBtn.classList.remove('btn-secondary');
+        if (loginBtn) loginBtn.style.display = 'flex';
+        if (loginBtn) loginBtn.classList.add('btn-primary');
+        if (loginBtn) loginBtn.classList.remove('btn-secondary');
         
-        signupBtn.style.display = 'none';
-        signupBtn.classList.remove('btn-primary');
-        signupBtn.classList.add('btn-secondary');
+        if (signupBtn) signupBtn.style.display = 'none';
+        if (signupBtn) signupBtn.classList.remove('btn-primary');
+        if (signupBtn) signupBtn.classList.add('btn-secondary');
     } else { // authMode === 'signup'
-        signupBtn.style.display = 'flex';
-        signupBtn.classList.add('btn-primary');
-        signupBtn.classList.remove('btn-secondary');
+        if (signupBtn) signupBtn.style.display = 'flex';
+        if (signupBtn) signupBtn.classList.add('btn-primary');
+        if (signupBtn) signupBtn.classList.remove('btn-secondary');
         
-        loginBtn.style.display = 'none';
-        loginBtn.classList.remove('btn-primary');
-        loginBtn.classList.add('btn-secondary');
+        if (loginBtn) loginBtn.style.display = 'none';
+        if (loginBtn) loginBtn.classList.remove('btn-primary');
+        if (loginBtn) loginBtn.classList.add('btn-secondary');
     }
     
-    modeToggleText.textContent = authMode === 'login' ? 'साइन अप' : 'लॉग इन';
-    authMessage.style.display = 'none';
+    if (modeToggleText) modeToggleText.textContent = authMode === 'login' ? 'साइन अप' : 'लॉग इन';
+    if (authMessage) authMessage.style.display = 'none';
 }
 
 /**
  * Handles both Login and Signup actions based on the current authMode state.
  */
 async function handleAuthAction() {
-    // ... (unchanged auth logic)
-    const actionType = authMode; // Read the current mode
+    // This function MUST be global and correctly linked to the button
+    const actionType = authMode; 
     const email = authEmail.value;
     const password = authPassword.value;
     authMessage.style.display = 'none';
@@ -203,13 +207,11 @@ async function handleAuthAction() {
     if (actionType === 'login') {
         authPromise = supabase.auth.signInWithPassword({ email, password });
     } else if (actionType === 'signup') {
-        // FIX: Added emailRedirectTo option to ensure the user is sent back to the app 
-        // root after confirming the email, allowing the SDK to pick up the token.
         authPromise = supabase.auth.signUp({ 
             email, 
             password,
             options: {
-                emailRedirectTo: window.location.origin, // Sends user back to root after confirmation
+                emailRedirectTo: window.location.origin, 
             }
         });
     }
@@ -224,12 +226,11 @@ async function handleAuthAction() {
         authMessage.textContent = 'सफलतापूर्वक साइन अप किया गया! लॉग इन करने से पहले अपने अकाउंट की पुष्टि करने के लिए कृपया अपना ईमेल देखें।';
         authMessage.style.color = 'var(--success)';
         authMessage.style.display = 'block';
-        toggleAuthMode('login'); // Switch back to login mode after successful signup prompt
+        toggleAuthMode('login'); 
     }
 }
 
 async function signInWithGoogle() {
-    // ... (unchanged auth logic)
     const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -245,19 +246,14 @@ async function signInWithGoogle() {
 }
 
 async function userSignOut() {
-    // ... (unchanged auth logic)
     const { error } = await supabase.auth.signOut();
     if (error) {
         console.error("Logout Error:", error);
     }
 }
 
-// --- STORAGE HELPER FUNCTIONS (NEW) ---
+// --- STORAGE HELPER FUNCTIONS (UNCHANGED from previous update) ---
 
-/**
- * Helper function to upload/update a single project component to Supabase Storage.
- * This is the core 'save to storage' logic.
- */
 async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
     if (!content) return null; 
 
@@ -267,21 +263,16 @@ async function uploadProjectComponent(bucketName, filePath, content, mimeType) {
         .from(bucketName)
         .upload(filePath, fileContent, {
             cacheControl: '3600',
-            upsert: true // Allows updating existing files with the same path
+            upsert: true 
         });
 
     if (error) {
         throw new Error(`Storage Upload Failed (${filePath}): ${error.message}`);
     }
 
-    // data.path returns the path relative to the bucket (e.g., 'user_id/project_name/index.html')
     return data.path; 
 }
 
-/**
- * Helper function to download file content from Supabase Storage.
- * This is the core 'load from storage' logic.
- */
 async function downloadStorageFile(bucketName, filePath) {
     if (!filePath) return '';
     
@@ -294,13 +285,9 @@ async function downloadStorageFile(bucketName, filePath) {
         return `/* Error downloading content from Storage: ${error.message} */`;
     }
 
-    // Convert Blob to text
     return await data.text();
 }
 
-/**
- * Constructs a temporary URL for the preview iframe using the code content.
- */
 function getPreviewUrl(htmlContent, cssContent, jsContent) {
     const combinedHtml = `
         <!DOCTYPE html>
@@ -320,10 +307,9 @@ function getPreviewUrl(htmlContent, cssContent, jsContent) {
 }
 
 
-// --- DATA / SUPABASE FUNCTIONS (UPDATED FOR STORAGE PATHS) ---
+// --- DATA / SUPABASE FUNCTIONS (UNCHANGED from previous update, now using Storage Paths) ---
 
 function loadProjects() {
-    // ... (unchanged realtime setup logic)
     if (supabaseChannel) {
         supabaseChannel.unsubscribe();
     }
@@ -351,7 +337,6 @@ function loadProjects() {
 }
 
 async function fetchProjects() {
-    // --- UPDATED: 'html', 'css', 'js' columns now store paths, not content. ---
     const { data, error } = await supabase
         .from('projects')
         .select('id, name, created_at, html, css, js') 
@@ -363,11 +348,9 @@ async function fetchProjects() {
         return;
     }
 
-    // Store paths, not content
     projectsList = data.map(p => ({
         id: p.id,
         name: p.name,
-        // Renamed properties locally to reflect they are paths
         htmlPath: p.html, 
         cssPath: p.css,   
         jsPath: p.js,     
@@ -379,7 +362,6 @@ async function fetchProjects() {
 
 
 function renderProjectsList() {
-    // ... (unchanged rendering logic)
     projectsListContainer.innerHTML = '';
     if (projectsList.length === 0) {
         noProjectsMessage.style.display = 'block';
@@ -422,9 +404,6 @@ function cancelSave() {
     saveModalOverlay.style.display = 'none';
 }
 
-/**
- * Saves project files to Storage and stores paths in the Database.
- */
 async function confirmSaveProject() {
     const projectName = projectNameInput.value.trim();
     saveModalOverlay.style.display = 'none';
@@ -490,10 +469,6 @@ async function confirmSaveProject() {
     }
 }
 
-
-/**
- * Updates files directly in Storage and updates the database record to ensure consistency.
- */
 async function saveCodeChanges() {
     if (!currentProject.id) {
         console.error("Cannot save changes: Project ID is missing. Please save the project first.");
@@ -574,7 +549,6 @@ async function saveCodeChanges() {
 // --- DELETE LOGIC (UPDATED FOR STORAGE DELETE) ---
 
 function deleteProject(projectId, projectName) {
-    // ... (unchanged modal setup)
     if (!userId) {
         console.error("User not authenticated.");
         return;
@@ -585,7 +559,6 @@ function deleteProject(projectId, projectName) {
 }
 
 function cancelDelete() {
-    // ... (unchanged modal tear down)
     projectIdToDelete = null;
     deleteModalOverlay.style.display = 'none';
 }
@@ -616,7 +589,6 @@ async function confirmDelete() {
                 .remove(filesToDelete);
 
             if (storageError) {
-                // Warning: We log the error but still try to delete the DB record.
                 console.error("Storage delete error:", storageError);
             } else {
                 console.log("Associated files deleted from Storage.");
@@ -826,21 +798,21 @@ function validateProject() {
     
     const canSave = hasHtml;
     
-    saveProjectBtn.disabled = !canSave;
-    openEditorBtn.disabled = !canSave;
+    if (saveProjectBtn) saveProjectBtn.disabled = !canSave;
+    if (openEditorBtn) openEditorBtn.disabled = !canSave;
     
-    const missingUl = missingList.querySelector('ul');
-    missingUl.innerHTML = '';
+    const missingUl = missingList ? missingList.querySelector('ul') : null;
+    if (missingUl) missingUl.innerHTML = '';
     
     if (missing.length > 0) {
-        missingList.style.display = 'block';
+        if (missingList) missingList.style.display = 'block';
         missing.forEach(file => {
             const li = document.createElement('li');
             li.textContent = file;
-            missingUl.appendChild(li);
+            if (missingUl) missingUl.appendChild(li);
         });
     } else {
-        missingList.style.display = 'none';
+        if (missingList) missingList.style.display = 'none';
     }
 }
 
@@ -866,15 +838,15 @@ window.addEventListener('load', () => {
     initSupabase();
     
     // --- Event Listeners ---
-    folderInput.addEventListener('change', (e) => processFiles(e.target.files));
-    fileInput.addEventListener('change', (e) => processFiles(e.target.files));
+    if (folderInput) folderInput.addEventListener('change', (e) => processFiles(e.target.files));
+    if (fileInput) fileInput.addEventListener('change', (e) => processFiles(e.target.files));
     
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
-        dropZone.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+        if (dropZone) dropZone.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
     });
-    dropZone.addEventListener('dragenter', () => dropZone.classList.add('drag-active'));
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
-    dropZone.addEventListener('drop', (e) => {
+    if (dropZone) dropZone.addEventListener('dragenter', () => dropZone.classList.add('drag-active'));
+    if (dropZone) dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
+    if (dropZone) dropZone.addEventListener('drop', (e) => {
         dropZone.classList.remove('drag-active');
         processFiles(e.dataTransfer.items);
     });
@@ -883,11 +855,16 @@ window.addEventListener('load', () => {
         tab.addEventListener('click', () => switchEditorTab(tab.dataset.tab));
     });
     
-    projectNameInput.addEventListener('keydown', (e) => {
+    if (projectNameInput) projectNameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             confirmSaveProject();
         }
     });
+
+    // --- FIX: Ensure buttons call the correct functions (if not done in HTML) ---
+    // Assuming buttons have `onclick` defined in HTML, but adding listeners defensively
+    if (loginBtn) loginBtn.addEventListener('click', handleAuthAction);
+    if (signupBtn) signupBtn.addEventListener('click', handleAuthAction);
 });
 
 async function processFiles(input) {
