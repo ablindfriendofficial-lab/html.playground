@@ -79,9 +79,12 @@ const loginBtn = document.getElementById('login-btn');
 const signupBtn = document.getElementById('signup-btn');
 const modeToggleText = document.getElementById('mode-toggle-text');
 
-// --- CORE FUNCTIONS (Helper for view switching, needed for other functions) ---
+// --- CORE NAVIGATION FUNCTIONS (HISTORY API IMPLEMENTATION) ---
 
-function switchView(viewId) {
+/**
+ * Renders the correct view visually (private function).
+ */
+function _switchViewVisual(viewId) {
     const views = {
         'view-loading': viewLoading,
         'view-upload': viewUpload,
@@ -101,12 +104,30 @@ function switchView(viewId) {
     });
 }
 
+/**
+ * Handles navigation, updating the browser history if required.
+ */
+function navigate(viewId, pushState = true) {
+    if (pushState && window.location.hash !== `#${viewId}`) {
+        // Push a new state only if the current hash is different
+        history.pushState({ viewId: viewId }, '', `#${viewId}`);
+    }
+    _switchViewVisual(viewId);
+}
+
+/**
+ * Expose the main navigation function globally for HTML onclick events.
+ */
+window.switchView = function(viewId) {
+    navigate(viewId, true);
+}
+
+
 // --- INITIALIZATION (FIXED LOGIC) ---
 
 async function initSupabase() {
     try {
         // 1. Initialize Supabase Client
-        // Check if window.supabase is available (loaded via CDN)
         if (!window.supabase) {
             console.error("Supabase CDN not loaded. Initialization failed.");
             document.getElementById('loading-spinner').textContent = "❌ Supabase library missing.";
@@ -133,12 +154,19 @@ async function initSupabase() {
              document.getElementById('loading-spinner').textContent = "❌ Session check error.";
              return;
         }
+        
+        // 4. Determine initial view based on session and URL hash
+        const initialHash = window.location.hash ? window.location.hash.substring(1) : (session ? 'view-upload' : 'view-auth');
 
         if (session) {
             handleAuthChange(session);
+            // After successful session handling, set initial view without pushing state
+            navigate(initialHash, false); 
         } else {
             // No session found, show auth view
             handleAuthChange(null);
+            // For auth screen, we don't need to push state initially
+            navigate('view-auth', false);
         }
 
     } catch (error) {
@@ -147,7 +175,18 @@ async function initSupabase() {
     }
 }
 
-// --- AUTH LOGIC ---
+// --- HISTORY API LISTENER (Handles browser back/forward buttons) ---
+
+window.addEventListener('popstate', (event) => {
+    // Read the viewId from the history state, default to 'view-auth' if state is null
+    const viewId = event.state && event.state.viewId ? event.state.viewId : (userId ? 'view-upload' : 'view-auth');
+    
+    // Navigate without pushing a new state (replace current hash)
+    navigate(viewId, false);
+});
+
+
+// --- AUTH LOGIC (UNCHANGED) ---
 
 function handleAuthChange(session) {
     if (session) {
@@ -160,14 +199,13 @@ function handleAuthChange(session) {
             welcomeText.textContent = `Welcome, ${session.user.email || session.user.id}!`;
         }
         
-        // Ensure the view switches to upload only after successful login/confirmation
-        switchView('view-upload'); 
+        // Navigate to upload view after login
+        navigate('view-upload', true); 
     } else {
         userId = null;
         console.log("User logged out or session expired.");
-        // Ensure auth mode starts correctly when showing auth view
         toggleAuthMode('login'); 
-        switchView('view-auth'); 
+        navigate('view-auth', true); 
     }
 }
 
@@ -754,7 +792,8 @@ window.openEditor = async function(projectId) {
     // Update preview after content is loaded/set
     switchEditorTab(currentActiveTab);
     updatePreview();
-    switchView('view-workspace'); // Show the workspace which contains the editor
+    // Use navigate for history support
+    navigate('view-workspace', true); 
 }
 
 /**
@@ -765,8 +804,7 @@ window.launchProject = async function(projectId) {
     if (!project) return;
 
     previewProjectName.textContent = `Downloading: ${project.name}`;
-    switchView('view-fullscreen');
-
+    
     const [html, css, js] = await Promise.all([
         downloadStorageFile(BUCKET_NAME, project.htmlPath),
         downloadStorageFile(BUCKET_NAME, project.cssPath),
@@ -775,6 +813,8 @@ window.launchProject = async function(projectId) {
     
     fullscreenFrame.src = getPreviewUrl(html, css, js);
     previewProjectName.textContent = `Project Preview: ${project.name}`;
+    // Use navigate for history support
+    navigate('view-fullscreen', true); 
 }
 
 
@@ -791,11 +831,13 @@ window.updatePreview = function() {
 window.refreshPreview = window.updatePreview;
 window.toggleFullscreen = function(forceExit) {
     if (forceExit) {
-        switchView('view-projects');
+        // Use navigate for history support
+        navigate('view-projects', true);
     } else {
         // Assuming the user meant a simple switch to fullscreen frame
         fullscreenFrame.src = previewFrame.src;
-        switchView('view-fullscreen');
+        // Use navigate for history support
+        navigate('view-fullscreen', true);
     }
 }
 
