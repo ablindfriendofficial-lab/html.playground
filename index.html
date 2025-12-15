@@ -4,242 +4,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Strict Project Viewer</title>
-    <!-- JSZip Library for creating ZIP files -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    
-    <!-- Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
-    <!-- CSS फ़ाइल को लिंक करें -->
     <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
     
-    <!-- VIEW 0: LOADING/AUTH SCREEN -->
+    <!-- Loading Screen -->
     <div id="view-loading" class="view-section active center-screen" style="z-index: 100; background: var(--bg-main);">
         <div style="font-size: 1.5rem; color: var(--accent);">
             <span id="loading-spinner">...</span> Initializing App
-            <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 10px;">Connecting to Supabase</p> 
         </div>
     </div>
     
-    <!-- VIEW 0.5: AUTHENTICATION SCREEN (LOGIN/SIGNUP) -->
+    <!-- Auth Screen -->
     <div id="view-auth" class="view-section center-screen">
         <div class="action-box" id="auth-box">
             <span class="icon-large">🔑</span>
-            <h2 id="auth-title">Log In to Access Projects</h2>
-            <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 0.9rem;">
-                Enter your email and password.
-            </p>
-            
-            <input type="email" id="auth-email" placeholder="Email" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main); margin-bottom: 10px;">
-            <input type="password" id="auth-password" placeholder="Password" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main); margin-bottom: 15px;">
-            
-            <div id="auth-message" style="color: var(--error); font-size: 0.85rem; margin-bottom: 10px; display: none;"></div>
-            
-            <!-- Login Button - Starts Primary -->
-            <button class="btn-base btn-primary" id="login-btn" style="width: 100%; justify-content: center;" onclick="handleAuthAction()">
-                Log In
-            </button>
-            <!-- Signup Button - Starts Secondary/Hidden. JS toggles classes and visibility. -->
-            <button class="btn-base btn-secondary" id="signup-btn" style="width: 100%; justify-content: center; display: none;" onclick="handleAuthAction()">
-                Sign Up (New Account)
-            </button>
-            
-            <div style="margin-top: 20px; width: 100%; display: flex; align-items: center; justify-content: center;">
-                <div style="flex-grow: 1; height: 1px; background: var(--border);"></div>
-                <span style="padding: 0 10px; color: var(--text-dim); font-size: 0.9rem;">OR</span>
-                <div style="flex-grow: 1; height: 1px; background: var(--border);"></div>
-            </div>
-
-            <button class="btn-base" style="margin-top: 15px; background-color: #4285F4; color: white; width: 100%; justify-content: center;" onclick="signInWithGoogle()">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo-google.png" alt="Google logo" style="width: 20px; height: 20px; margin-right: 10px;">
-                Continue with Google
-            </button>
-
-            <button class="btn-base" style="margin-top: 20px; background: none; color: var(--text-dim); text-decoration: underline;" onclick="toggleAuthMode()">
-                Switch to <span id="mode-toggle-text">Sign Up</span>
-            </button>
+            <h2 id="auth-title">Log In</h2>
+            <input type="email" id="auth-email" placeholder="Email" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="password" id="auth-password" placeholder="Password" style="width: 100%; padding: 10px; margin-bottom: 15px;">
+            <div id="auth-message" style="color: var(--error); display: none; margin-bottom: 10px;"></div>
+            <button class="btn-base btn-primary" id="login-btn" style="width: 100%;" onclick="handleAuthAction()">Log In</button>
+            <button class="btn-base btn-secondary" id="signup-btn" style="width: 100%; display: none;" onclick="handleAuthAction()">Sign Up</button>
+            <button class="btn-base" style="margin-top: 20px; background: none; color: var(--text-dim); text-decoration: underline;" onclick="toggleAuthMode()">Switch to <span id="mode-toggle-text">Sign Up</span></button>
         </div>
     </div>
 
-
-    <!-- VIEW 1: UPLOAD SCREEN -->
+    <!-- Upload Screen (Buttons Fixed Here) -->
     <div id="view-upload" class="view-section center-screen">
         <header class="toolbar">
-            <div class="toolbar-group">
-                <span style="font-weight: 700; font-size: 1.1rem; color: var(--accent);">Welcome, User!</span>
-            </div>
-            <div class="toolbar-group">
-                <button class="btn-base btn-danger" onclick="userSignOut()" style="margin-top: 0; padding: 8px 12px;">
-                    Log Out
-                </button>
-            </div>
+            <div class="toolbar-group"><span>Welcome!</span></div>
+            <div class="toolbar-group"><button class="btn-base btn-danger" onclick="userSignOut()">Log Out</button></div>
         </header>
 
         <div class="action-box" id="drop-zone">
             <span class="icon-large">📂</span>
             <h2>Upload New Project</h2>
-            <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 0.9rem;">
-                Upload <code>index.html</code>, <code>style.css</code>, and <code>script.js</code>
-            </p>
             
-            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%;">
-                
-                <label for="file-input" class="btn-base btn-primary" style="width: 100%; justify-content: center;">
-                    + Add Files
-                </label>
-                <label for="folder-input" class="btn-base btn-secondary" style="width: 100%; justify-content: center;">
-                    + Add Folder
-                </label>
+            <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                <label for="file-input" class="btn-base btn-primary" style="justify-content: center;">+ Add Files</label>
+                <label for="folder-input" class="btn-base btn-secondary" style="justify-content: center;">+ Add Folder</label>
             </div>
 
-            <!-- Mini List -->
-            <div class="upload-file-list" id="mini-file-list" style="display:none; text-align: left; width: 100%; margin-top: 10px;"></div>
-            <div id="file-count" style="color: var(--text-dim); font-size: 0.8rem; margin-top: 5px;"></div>
+            <ul id="mini-file-list" style="text-align: left; width: 100%; margin-top: 10px; list-style: none; padding: 0;"></ul>
+            <div id="file-count" style="color: var(--text-dim); font-size: 0.8rem;"></div>
 
-            <!-- Error Box -->
-            <div id="error-display">
+            <!-- Warning Box (Will be hidden by JS now) -->
+            <div id="error-display" style="margin-top: 10px; color: var(--warning);">
                 <strong>⚠️ Still Missing:</strong>
-                <ul id="missing-list"></ul>
-            </div>
-            
-            <div id="action-area">
-                <!-- Buttons appear here -->
+                <ul id="missing-list" style="padding-left: 20px;"></ul>
             </div>
             
             <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px; width: 100%;">
                 
-                <!-- NEW: Preview/Edit Button -->
+                <!-- PREVIEW & SAVE BUTTONS (Make sure these are here!) -->
                 <button id="open-editor-btn" class="btn-base btn-primary" disabled onclick="openEditor(null)">
-                    Preview / Edit Code
+                    👁️ Preview / Edit Code
                 </button>
                 
-                <!-- Save Button -->
                 <button id="save-project-btn" class="btn-base btn-success" disabled onclick="saveProject()">
-                    💾 Save Project to Supabase
+                    💾 Save to Supabase
                 </button>
 
-                <div style="display: flex; gap: 10px; width: 100%;">
-                    <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="flex: 1;">
-                        <span style="font-size: 1.2rem;">🗃️</span> See Saved
-                    </button>
-                    <button class="btn-base btn-danger" onclick="resetUploadState()" style="flex: 1;">
-                        <span style="font-size: 1.2rem;">🗑️</span> Clear Uploads
-                    </button>
+                <div style="display: flex; gap: 10px; width: 100%; margin-top: 10px;">
+                    <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="flex: 1;">See Saved</button>
+                    <button class="btn-base btn-danger" onclick="resetUploadState()" style="flex: 1;">Clear</button>
                 </div>
             </div>
 
-
-            <!-- Inputs -->
             <input type="file" id="file-input" multiple style="display: none;">
             <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
         </div>
     </div>
 
-    <!-- VIEW 2: PROJECTS LIST -->
+    <!-- Other Views (Projects, Workspace, etc.) -->
     <div id="view-projects" class="view-section">
         <header class="toolbar">
-            <div class="toolbar-group">
-                <button class="btn-base btn-secondary" onclick="switchView('view-upload')" style="margin-top: 0;">
-                    ← Back to Upload
-                </button>
-            </div>
-            <div class="toolbar-group">
-                <span style="font-weight: 700; font-size: 1.1rem;">🗃️ My Saved Projects</span>
-            </div>
+            <button class="btn-base btn-secondary" onclick="switchView('view-upload')">← Back</button>
+            <span>My Projects</span>
         </header>
-        <div class="workspace-body center-screen" style="overflow-y: auto;">
-            <div class="project-list-container">
-                <div id="projects-list">
-                    <!-- Project cards will be injected here -->
-                    <p id="no-projects-message" style="color: var(--text-dim); display: none;">You haven't saved any projects yet.</p>
-                </div>
-            </div>
-        </div>
+        <div class="workspace-body center-screen"><div id="projects-list"></div></div>
     </div>
 
-    <!-- VIEW 3: WORKSPACE (PREVIEW WITH TOOLBAR) -->
     <div id="view-workspace" class="view-section">
         <header class="toolbar">
-            <div class="toolbar-group">
-                <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="margin-top: 0;">
-                    ← Back to Projects
-                </button>
-            </div>
-            <div class="toolbar-group">
-                <span style="font-weight: 700; font-size: 1.1rem;" id="preview-project-name">Project Preview</span>
-            </div>
-            <div class="toolbar-group">
-                <button class="btn-base btn-primary" onclick="refreshPreview()" style="margin-top: 0;"><span>⟳</span> Reload</button>
-                <button class="btn-base btn-secondary" onclick="toggleFullscreen()" style="margin-top: 0; padding: 8px 12px;">
-                    <span style="font-size: 1.1rem;">🔍</span> Full Screen
-                </button>
-            </div>
+            <button class="btn-base btn-secondary" onclick="switchView('view-upload')">← Back</button>
+            <span>Preview</span>
+            <button class="btn-base btn-primary" onclick="refreshPreview()">Reload</button>
         </header>
-
-        <div class="workspace-body">
-            <iframe id="preview-frame" sandbox="allow-scripts allow-modals allow-same-origin allow-forms"></iframe>
-        </div>
-    </div>
-    
-    <!-- VIEW 3.5: FULL SCREEN PREVIEW (NO TOOLBAR) -->
-    <div id="view-fullscreen" class="view-section">
-        <button class="exit-btn" onclick="toggleFullscreen(true)">Exit Full Screen ✕</button>
-        <iframe id="fullscreen-frame" sandbox="allow-scripts allow-modals allow-same-origin allow-forms" style="width: 100%; height: 100%; border: none; background: white;"></iframe>
+        <div class="workspace-body"><iframe id="preview-frame" style="width:100%; height:100%; border:none;"></iframe></div>
     </div>
 
-    <!-- VIEW 4: EDITOR -->
-    <div id="view-editor" class="view-section center-screen">
-        <div class="editor-container" style="width: 100%; height: 100%;">
-            <div class="editor-header">
-                <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="margin-top: 0; padding: 8px 15px;">
-                    ← Back
-                </button>
-                <h3 id="editor-project-name">Editing: Project Name</h3>
-                <button class="btn-base btn-success" onclick="saveCodeChanges()" style="margin-top: 0; padding: 8px 15px;">
-                    💾 Save Changes
-                </button>
-            </div>
-            <div class="editor-tabs">
-                <button class="editor-tab active" data-tab="html">index.html</button>
-                <button class="editor-tab" data-tab="css">style.css</button>
-                <button class="editor-tab" data-tab="js">script.js</button>
-            </div>
-            <div class="editor-content">
-                <textarea id="editor-html" class="active" spellcheck="false" data-key="html"></textarea>
-                <textarea id="editor-css" spellcheck="false" data-key="css"></textarea>
-                <textarea id="editor-js" spellcheck="false" data-key="js"></textarea>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Project Name Input Modal (Custom Prompt) -->
     <div id="save-modal-overlay" class="view-section center-screen" style="z-index: 1000; background: rgba(0,0,0,0.8); display: none;">
-        <div class="action-box" style="border: none; max-width: 400px; padding: 25px;">
-            <h3>Name Your Project</h3>
-            <p style="color: var(--text-dim); font-size: 0.9rem; margin-top: 5px; margin-bottom: 15px;">Enter a unique name before saving.</p>
-            <input type="text" id="project-name-input" placeholder="e.g., My Awesome Landing Page" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main); margin-bottom: 15px;">
-            <div style="display: flex; gap: 10px; width: 100%;">
+        <div class="action-box">
+            <h3>Name Project</h3>
+            <input type="text" id="project-name-input" style="width: 100%; padding: 10px; margin: 10px 0;">
+            <div style="display: flex; gap: 10px;">
                 <button class="btn-base btn-secondary" onclick="cancelSave()">Cancel</button>
                 <button class="btn-base btn-success" onclick="confirmSaveProject()">Save</button>
             </div>
         </div>
     </div>
-    
-    <!-- Delete Confirmation Modal -->
-    <div id="delete-modal-overlay" class="view-section center-screen" style="z-index: 1000; background: rgba(0,0,0,0.8); display: none;">
-        <div class="action-box" style="border: none; max-width: 400px; padding: 25px;">
-            <h3 style="color: var(--error);">Confirm Deletion</h3>
-            <p style="color: var(--text-dim); font-size: 0.9rem; margin-top: 5px; margin-bottom: 20px;">Are you sure you want to delete <strong id="delete-project-name">this project</strong>? This action cannot be undone.</p>
-            <div style="display: flex; gap: 10px; width: 100%;">
-                <button class="btn-base btn-secondary" onclick="cancelDelete()">Cancel</button>
-                <button class="btn-base btn-danger" onclick="confirmDelete()">Delete Permanently</button>
-            </div>
-        </div>
-    </div>
 
-    <!-- JavaScript फ़ाइल को लोड करें -->
     <script src="script.js"></script> 
 </body>
 </html>
