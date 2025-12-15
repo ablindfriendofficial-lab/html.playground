@@ -727,6 +727,7 @@ window.downloadProjectAsZip = async function(projectId, projectName) {
  * Loads project paths from ID, downloads content, and opens editor.
  */
 window.openEditor = async function(projectId) {
+    // FIX: Ensure editor content is cleared before new content loads
     editorHtml.value = '';
     editorCss.value = '';
     editorJs.value = '';
