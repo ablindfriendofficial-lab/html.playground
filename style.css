@@ -84,38 +84,41 @@ h2 { margin-bottom: 10px; font-size: 1.3rem; }
     margin-top: 10px;
     display: inline-flex;
     align-items: center;
+    justify-content: center; /* Center text */
     gap: 8px;
-    transition: background 0.2s, transform 0.1s;
+    transition: background 0.2s, transform 0.1s, opacity 0.2s; /* Added opacity transition */
     user-select: none;
+    color: white; /* Ensure text is white */
+}
+
+/* --- DISABLED STATE (New Addition) --- */
+.btn-base:disabled, button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #4b5563 !important; /* Grey color for disabled */
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .btn-primary {
     background-color: var(--accent);
-    color: white;
 }
-.btn-primary:hover { background-color: var(--accent-hover); }
-.btn-primary:active { transform: scale(0.98); }
+.btn-primary:hover:not(:disabled) { background-color: var(--accent-hover); }
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
 
 .btn-secondary {
     background-color: #475569;
-    color: white;
 }
-.btn-secondary:hover { background-color: #334155; }
+.btn-secondary:hover:not(:disabled) { background-color: #334155; }
 
 .btn-danger {
     background-color: var(--error);
-    color: white;
 }
-.btn-danger:hover { background-color: #c72c2c; }
+.btn-danger:hover:not(:disabled) { background-color: #c72c2c; }
 
 
 .btn-success {
     background-color: var(--success);
-    color: white;
-    padding: 15px 30px;
-    border-radius: 50px;
-    font-weight: 700;
-    font-size: 1.1rem;
     box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
     animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     margin-top: 20px;
@@ -306,4 +309,5 @@ h2 { margin-bottom: 10px; font-size: 1.3rem; }
         height: 95%;
     }
 }
+
 
