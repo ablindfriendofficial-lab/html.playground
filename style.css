@@ -1,313 +1,347 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+// Supabase client is loaded via CDN link in index.html, so we can use `supabase.createClient` directly.
 
-:root {
-    --bg-main: #0f172a;
-    --bg-panel: #1e293b;
-    --border: #334155;
-    --text-main: #f1f5f9;
-    --text-dim: #94a3b8;
-    --accent: #3b82f6;
-    --accent-hover: #2563eb;
-    --success: #22c55e;
-    --error: #ef4444;
-    --warning: #f59e0b;
+// --- SUPABASE CONFIGURATION ---
+const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
+const BUCKET_NAME = 'ABC_assets'; 
+
+let supabase = null;
+let userId = null; 
+
+// --- APP STATE ---
+let uploadedFilesMap = new Map(); 
+let currentProject = { id: null, name: '', html: '', css: '', js: '', htmlPath: null, cssPath: null, jsPath: null };
+let projectsList = []; 
+let projectIdToDelete = null; 
+let authMode = 'login'; 
+let currentActiveTab = 'html'; 
+
+// --- DOM ELEMENTS ---
+const viewLoading = document.getElementById('view-loading');
+const viewUpload = document.getElementById('view-upload');
+const viewProjects = document.getElementById('view-projects');
+const viewWorkspace = document.getElementById('view-workspace');
+const viewFullscreen = document.getElementById('view-fullscreen');
+const viewEditor = document.getElementById('view-editor');
+const viewAuth = document.getElementById('view-auth');
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const folderInput = document.getElementById('folder-input');
+
+const miniFileList = document.getElementById('mini-file-list');
+const fileCountDisplay = document.getElementById('file-count');
+const errorDisplay = document.getElementById('error-display'); // The Warning Box
+const missingListUl = document.getElementById('missing-list'); // The List inside it
+const saveProjectBtn = document.getElementById('save-project-btn'); 
+const openEditorBtn = document.getElementById('open-editor-btn'); 
+
+const projectsListContainer = document.getElementById('projects-list');
+const noProjectsMessage = document.getElementById('no-projects-message');
+const previewFrame = document.getElementById('preview-frame');
+const fullscreenFrame = document.getElementById('fullscreen-frame');
+const previewProjectName = document.getElementById('preview-project-name');
+
+const editorHtml = document.getElementById('editor-html');
+const editorCss = document.getElementById('editor-css');
+const editorJs = document.getElementById('editor-js');
+const editorProjectName = document.getElementById('editor-project-name');
+const editorTabs = document.querySelectorAll('.editor-tab');
+
+const saveModalOverlay = document.getElementById('save-modal-overlay');
+const projectNameInput = document.getElementById('project-name-input');
+const deleteModalOverlay = document.getElementById('delete-modal-overlay');
+const deleteProjectNameDisplay = document.getElementById('delete-project-name');
+
+// Auth Elements
+const authTitle = document.getElementById('auth-title');
+const authEmail = document.getElementById('auth-email');
+const authPassword = document.getElementById('auth-password');
+const authMessage = document.getElementById('auth-message');
+const loginBtn = document.getElementById('login-btn');
+const signupBtn = document.getElementById('signup-btn');
+const modeToggleText = document.getElementById('mode-toggle-text');
+
+// --- NAVIGATION ---
+function _switchViewVisual(viewId) {
+    [viewLoading, viewUpload, viewProjects, viewWorkspace, viewFullscreen, viewAuth].forEach(view => {
+        if (view) view.classList.remove('active');
+    });
+    const activeView = document.getElementById(viewId);
+    if (activeView) activeView.classList.add('active');
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-    font-family: 'Inter', system-ui, sans-serif;
-    background-color: var(--bg-main);
-    color: var(--text-main);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: 12px;
-}
-
-/* --- VIEWS --- */
-.view-section {
-    display: none;
-    width: 100%;
-    height: 100%;
-    flex-direction: column;
-    position: absolute;
-    top: 0; left: 0;
-}
-
-.view-section.active {
-    display: flex;
-    z-index: 10;
-}
-
-.center-screen {
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    background: var(--bg-main);
-}
-
-/* --- UI COMPONENTS --- */
-.action-box {
-    width: 90%;
-    max-width: 600px;
-    padding: 30px;
-    border: 2px dashed var(--border);
-    border-radius: 16px;
-    background: var(--bg-panel);
-    transition: all 0.3s ease;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.action-box.drag-active {
-    border-color: var(--accent);
-    background: rgba(59, 130, 246, 0.1);
-    transform: scale(1.02);
-}
-
-.icon-large { font-size: 3rem; margin-bottom: 10px; display: block; }
-
-h2 { margin-bottom: 10px; font-size: 1.3rem; }
-
-.btn-base {
-    border: none;
-    padding: 12px 24px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 1rem;
-    margin-top: 10px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center; /* Center text */
-    gap: 8px;
-    transition: background 0.2s, transform 0.1s, opacity 0.2s; /* Added opacity transition */
-    user-select: none;
-    color: white; /* Ensure text is white */
-}
-
-/* --- DISABLED STATE (New Addition) --- */
-.btn-base:disabled, button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background-color: #4b5563 !important; /* Grey color for disabled */
-    transform: none !important;
-    box-shadow: none !important;
-}
-
-.btn-primary {
-    background-color: var(--accent);
-}
-.btn-primary:hover:not(:disabled) { background-color: var(--accent-hover); }
-.btn-primary:active:not(:disabled) { transform: scale(0.98); }
-
-.btn-secondary {
-    background-color: #475569;
-}
-.btn-secondary:hover:not(:disabled) { background-color: #334155; }
-
-.btn-danger {
-    background-color: var(--error);
-}
-.btn-danger:hover:not(:disabled) { background-color: #c72c2c; }
-
-
-.btn-success {
-    background-color: var(--success);
-    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
-    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    margin-top: 20px;
-}
-
-@keyframes popIn {
-    from { opacity: 0; transform: scale(0.8); }
-    to { opacity: 1; transform: scale(1); }
-}
-
-/* --- PROJECT LIST VIEW --- */
-.project-list-container {
-    width: 100%;
-    max-width: 800px;
-    padding: 20px;
-}
-
-#projects-list {
-    margin-top: 20px;
-    display: grid;
-    gap: 15px;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-}
-
-.project-card {
-    background: var(--bg-panel);
-    border-radius: 12px;
-    padding: 15px;
-    border: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.project-card h3 {
-    font-size: 1.1rem;
-    margin-bottom: 10px;
-    color: var(--text-main);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.project-card p {
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    margin-bottom: 15px;
-}
-
-.project-actions {
-    display: flex;
-    flex-direction: column;
-}
-
-.project-actions button {
-    width: 100%;
-    margin-top: 5px;
-    padding: 10px;
-    border-radius: 6px;
-    font-weight: 500;
-}
-
-/* --- EDITOR VIEW --- */
-.editor-container {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    width: 100%;
-    max-width: 1000px;
-    margin: auto;
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--bg-panel);
-}
-
-.editor-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-}
-
-.editor-tab {
-    padding: 12px 20px;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    color: var(--text-dim);
-    font-weight: 500;
-    transition: color 0.2s, background 0.2s;
-}
-
-.editor-tab.active {
-    color: var(--accent);
-    background: #2d3748;
-    border-bottom: 2px solid var(--accent);
-}
-.editor-tab:not(.active):hover {
-    color: var(--text-main);
-}
-
-.editor-content {
-    flex: 1;
-    padding: 15px;
-    position: relative;
-}
-
-.editor-content textarea {
-    width: 100%;
-    height: 100%;
-    background: var(--bg-panel);
-    border: none;
-    color: var(--text-main);
-    font-family: monospace;
-    font-size: 0.9rem;
-    resize: none;
-    outline: none;
-    padding: 0;
-    display: none;
-}
-
-.editor-content textarea.active {
-    display: block;
-}
-
-.editor-header {
-    padding: 10px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-}
-
-.editor-header h3 {
-    font-size: 1rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.toolbar {
-    height: 60px;
-    background-color: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    z-index: 20;
-}
-
-/* --- WORKSPACE LAYOUT FIX --- */
-.workspace-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-    position: relative;
-    height: 100%; /* Ensure vertical space fill */
-}
-
-/* Fullscreen View Specific Styles */
-#view-fullscreen {
-    padding: 0;
-}
-#view-fullscreen .exit-btn {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    z-index: 100;
-    background-color: rgba(0, 0, 0, 0.6);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    padding: 8px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.2s;
-    display: none;
-}
-
-#view-fullscreen.active .exit-btn {
-    display: block;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .editor-container {
-        width: 95%;
-        height: 95%;
+function navigate(viewId, pushState = true) {
+    if (pushState && window.location.hash !== `#${viewId}`) {
+        history.pushState({ viewId: viewId }, '', `#${viewId}`);
     }
+    _switchViewVisual(viewId);
+}
+
+window.switchView = function(viewId) { navigate(viewId, true); }
+window.addEventListener('popstate', (event) => {
+    const viewId = event.state && event.state.viewId ? event.state.viewId : (userId ? 'view-upload' : 'view-auth');
+    navigate(viewId, false);
+});
+
+// --- INITIALIZATION ---
+async function initSupabase() {
+    try {
+        if (!window.supabase) {
+            console.error("Supabase CDN not loaded.");
+            return;
+        }
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+                handleAuthChange(session);
+            } else if (event === 'SIGNED_OUT') {
+                handleAuthChange(null);
+            }
+        });
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        const initialHash = window.location.hash ? window.location.hash.substring(1) : (session ? 'view-upload' : 'view-auth');
+
+        if (session) {
+            handleAuthChange(session);
+            navigate(initialHash, false); 
+        } else {
+            handleAuthChange(null);
+            navigate('view-auth', false);
+        }
+    } catch (error) {
+        console.error("Init failed:", error);
+    }
+}
+
+function handleAuthChange(session) {
+    if (session) {
+        userId = session.user.id;
+        const welcomeText = document.querySelector('#view-upload .toolbar-group span');
+        if (welcomeText) welcomeText.textContent = `Welcome, ${session.user.email}!`;
+        navigate('view-upload', true); 
+    } else {
+        userId = null;
+        toggleAuthMode('login'); 
+        navigate('view-auth', true); 
+    }
+}
+
+// --- AUTH ACTIONS ---
+window.toggleAuthMode = function() {
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    authTitle.textContent = authMode === 'login' ? 'Log In' : 'Sign Up';
+    authMessage.style.display = 'none';
+    
+    if (authMode === 'login') {
+        loginBtn.style.display = 'flex';
+        signupBtn.style.display = 'none';
+        modeToggleText.textContent = 'Sign Up';
+    } else {
+        signupBtn.style.display = 'flex';
+        loginBtn.style.display = 'none';
+        modeToggleText.textContent = 'Log In';
+    }
+}
+
+window.handleAuthAction = async function() {
+    const email = authEmail.value;
+    const password = authPassword.value;
+    if (!email || !password) {
+        authMessage.textContent = 'Email and password required.';
+        authMessage.style.display = 'block';
+        return;
+    }
+    
+    let result;
+    if (authMode === 'login') {
+        result = await supabase.auth.signInWithPassword({ email, password });
+    } else {
+        result = await supabase.auth.signUp({ email, password });
+    }
+    
+    if (result.error) {
+        authMessage.textContent = result.error.message;
+        authMessage.style.display = 'block';
+    } else if (authMode === 'signup' && !result.data.user) {
+        authMessage.textContent = 'Check email for confirmation link.';
+        authMessage.style.color = 'var(--success)';
+        authMessage.style.display = 'block';
+    }
+}
+
+window.userSignOut = async () => { await supabase.auth.signOut(); }
+
+// --- FILE PROCESSING (FIXED) ---
+window.addEventListener('load', () => {
+    initSupabase();
+    if (folderInput) folderInput.addEventListener('change', (e) => processFiles(e.target.files));
+    if (fileInput) fileInput.addEventListener('change', (e) => processFiles(e.target.files));
+    
+    // Drag Drop
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
+        dropZone.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+    });
+    dropZone.addEventListener('drop', (e) => processFiles(e.dataTransfer.items));
+    
+    editorTabs.forEach(tab => tab.addEventListener('click', () => switchEditorTab(tab.dataset.tab)));
+});
+
+async function processFiles(input) {
+    let newFiles = [];
+    if (input instanceof DataTransferItemList) {
+        for (let i=0; i<input.length; i++) if (input[i].kind === 'file') newFiles.push(input[i].getAsFile());
+    } else {
+        newFiles = Array.from(input);
+    }
+    
+    if (newFiles.length === 0) return;
+
+    const readPromises = newFiles.map(file => {
+        return new Promise((resolve) => {
+            if (!file || file.name.startsWith('.')) return resolve();
+            
+            const originalName = file.name.toLowerCase();
+            let key = null;
+            if (originalName.endsWith('.html')) key = 'index.html';
+            else if (originalName.endsWith('.css')) key = 'style.css';
+            else if (originalName.endsWith('.js')) key = 'script.js';
+            
+            if (key) {
+                const reader = new FileReader();
+                reader.onload = (e) => { uploadedFilesMap.set(key, e.target.result); resolve(); };
+                reader.readAsText(file);
+            } else {
+                resolve();
+            }
+        });
+    });
+
+    await Promise.all(readPromises);
+    validateProject();
+    updateMiniList();
+}
+
+function updateMiniList() {
+    miniFileList.innerHTML = '';
+    let count = 0;
+    uploadedFilesMap.forEach((_, key) => {
+        const li = document.createElement('li');
+        li.textContent = key;
+        miniFileList.appendChild(li);
+        count++;
+    });
+    miniFileList.style.display = count > 0 ? 'block' : 'none';
+    fileCountDisplay.textContent = `${count} files found.`;
+}
+
+// --- CRITICAL FIX: VALIDATION LOGIC ---
+function validateProject() {
+    const hasHtml = !!uploadedFilesMap.get('index.html');
+    const canSave = hasHtml;
+
+    // 1. Toggle Buttons
+    if (saveProjectBtn) saveProjectBtn.disabled = !canSave;
+    if (openEditorBtn) openEditorBtn.disabled = !canSave;
+
+    // 2. Toggle Error Box (Fixing "Still Missing" issue)
+    if (!hasHtml) {
+        errorDisplay.style.display = 'block'; // Show if HTML is missing
+        missingListUl.innerHTML = '<li>index.html is required</li>';
+    } else {
+        errorDisplay.style.display = 'none'; // HIDE completely if HTML is present
+    }
+}
+
+// --- PREVIEW & EDITOR ---
+window.openEditor = async function(projectId) {
+    editorHtml.value = ''; editorCss.value = ''; editorJs.value = '';
+    
+    if (projectId) {
+        // Load from server logic (abbreviated)
+        const project = projectsList.find(p => p.id === projectId);
+        if(project) {
+            currentProject = {...project};
+            const [h, c, j] = await Promise.all([
+                downloadStorageFile(BUCKET_NAME, project.htmlPath),
+                downloadStorageFile(BUCKET_NAME, project.cssPath),
+                downloadStorageFile(BUCKET_NAME, project.jsPath)
+            ]);
+            editorHtml.value = h; editorCss.value = c; editorJs.value = j;
+        }
+    } else {
+        // Load LOCAL files
+        currentProject.id = null;
+        currentProject.name = 'New Upload';
+        editorHtml.value = uploadedFilesMap.get('index.html') || '';
+        editorCss.value = uploadedFilesMap.get('style.css') || '';
+        editorJs.value = uploadedFilesMap.get('script.js') || '';
+    }
+    
+    updatePreview();
+    navigate('view-workspace', true);
+}
+
+window.updatePreview = function() {
+    const blob = new Blob([`
+        <!DOCTYPE html><html><head><style>${editorCss.value}</style></head>
+        <body>${editorHtml.value}<script>${editorJs.value}<\/script></body></html>
+    `], { type: 'text/html' });
+    previewFrame.src = URL.createObjectURL(blob);
+}
+window.refreshPreview = window.updatePreview;
+
+// --- STORAGE HELPERS ---
+async function downloadStorageFile(bucket, path) {
+    if(!path) return '';
+    const { data } = await supabase.storage.from(bucket).download(path);
+    return data ? await data.text() : '';
+}
+
+async function uploadProjectComponent(bucket, path, content, type) {
+    if(!content) return null;
+    const { data, error } = await supabase.storage.from(bucket).upload(path, new Blob([content], {type}), { upsert: true });
+    if(error) throw error;
+    return data.path;
+}
+
+// --- SAVE LOGIC ---
+window.saveProject = function() {
+    projectNameInput.value = currentProject.name === 'New Upload' ? '' : currentProject.name;
+    saveModalOverlay.style.display = 'flex';
+}
+window.cancelSave = () => saveModalOverlay.style.display = 'none';
+
+window.confirmSaveProject = async function() {
+    const name = projectNameInput.value.trim();
+    if(!name) return;
+    saveModalOverlay.style.display = 'none';
+    
+    try {
+        const pathBase = `${userId}/${name}`;
+        const h = await uploadProjectComponent(BUCKET_NAME, `${pathBase}/index.html`, currentProject.html || editorHtml.value, 'text/html');
+        const c = await uploadProjectComponent(BUCKET_NAME, `${pathBase}/style.css`, currentProject.css || editorCss.value, 'text/css');
+        const j = await uploadProjectComponent(BUCKET_NAME, `${pathBase}/script.js`, currentProject.js || editorJs.value, 'application/javascript');
+        
+        await supabase.from('projects').insert([{ user_id: userId, name: name, html: h, css: c, js: j }]);
+        alert('Project Saved!');
+        resetUploadState();
+    } catch(e) {
+        alert('Save Failed: ' + e.message);
+    }
+}
+
+function resetUploadState() {
+    uploadedFilesMap.clear();
+    validateProject();
+    updateMiniList();
+}
+
+function switchEditorTab(tabId) {
+    editorTabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+    [editorHtml, editorCss, editorJs].forEach(e => e.classList.toggle('active', e.id === `editor-${tabId}`));
 }
 
 
