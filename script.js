@@ -1,410 +1,350 @@
+/**
+ * Strict Project Viewer - Supabase Implementation
+ * Corrected to use the Supabase URL and API Key provided.
+ */
+
 // --- SUPABASE CONFIGURATION ---
 const SUPABASE_URL = 'https://nhpfgtmqpslmiywyowtn.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocGZndG1xcHNsbWl5d3lvd3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NDA4NjgsImV4cCI6MjA4MTExNjg2OH0.o1YimirJA75cFLe4OTeNzX8gU1LPwJRbQOO8IGFwHdU'; 
 const BUCKET_NAME = 'ABC_assets'; 
 
-let supabase = null;
-let userId = null; 
-let supabaseChannel = null; 
+let supabaseClient = null;
+let currentUser = null;
+let authMode = 'login';
+let projectsList = [];
+let uploadedFilesMap = new Map();
+let currentProject = { id: null, name: '', html: '', css: '', js: '', htmlPath: '', cssPath: '', jsPath: '' };
 
-// --- APP STATE ---
-let uploadedFilesMap = new Map(); 
-let currentProject = {
-    id: null,
-    name: '',
-    html: '',
-    css: '',
-    js: '',
-    htmlPath: null, 
-    cssPath: null,
-    jsPath: null
-};
-let projectsList = []; 
-let projectIdToDelete = null; 
-let authMode = 'login'; 
-let currentActiveTab = 'html'; 
-
-// --- DOM Elements ---
-// We use a helper to prevent 'null' reference errors if an ID is missing in HTML
+// --- DOM ELEMENTS ---
 const get = (id) => document.getElementById(id);
+const views = ['view-loading', 'view-auth', 'view-upload', 'view-projects', 'view-workspace', 'view-fullscreen'];
 
-const viewLoading = get('view-loading');
-const viewUpload = get('view-upload');
-const viewProjects = get('view-projects');
-const viewWorkspace = get('view-workspace');
-const viewFullscreen = get('view-fullscreen');
-const viewAuth = get('view-auth');
-
-const dropZone = get('drop-zone');
-const fileInput = get('file-input');
-const folderInput = get('folder-input');
-const miniFileList = get('mini-file-list');
-const fileCountDisplay = get('file-count');
-const saveProjectBtn = get('save-project-btn'); 
-const openEditorBtn = get('open-editor-btn'); 
-
-const projectsListContainer = get('projects-list');
-const noProjectsMessage = get('no-projects-message');
-const previewFrame = get('preview-frame');
-const fullscreenFrame = get('fullscreen-frame');
-const previewProjectName = get('preview-project-name');
-
-const editorHtml = get('editor-html');
-const editorCss = get('editor-css');
-const editorJs = get('editor-js');
-const editorProjectName = get('editor-project-name');
-const editorTabs = document.querySelectorAll('.editor-tab');
-
-const saveModalOverlay = get('save-modal-overlay');
-const projectNameInput = get('project-name-input');
-const deleteModalOverlay = get('delete-modal-overlay');
-const deleteProjectNameDisplay = get('delete-project-name');
-
-const authTitle = get('auth-title');
-const authEmail = get('auth-email');
-const authPassword = get('auth-password');
-const authMessage = get('auth-message');
-const loginBtn = get('login-btn');
-const signupBtn = get('signup-btn');
-const modeToggleText = get('mode-toggle-text');
-
-// --- CORE FUNCTIONS ---
-
+// --- NAVIGATION & VIEW MANAGEMENT ---
 function switchView(viewId) {
-    const allViews = [viewLoading, viewUpload, viewProjects, viewWorkspace, viewFullscreen, viewAuth];
-    allViews.forEach(v => {
-        if (v) v.classList.toggle('active', v.id === viewId);
+    views.forEach(v => {
+        const el = get(v);
+        if (el) el.classList.toggle('active', v === viewId);
     });
 }
 
-function navigate(viewId, pushState = true) {
-    if (pushState && window.location.hash !== `#${viewId}`) {
-        history.pushState({ viewId }, '', `#${viewId}`);
-    }
-    switchView(viewId);
+function closeModal(id) { 
+    const el = get(id);
+    if (el) el.style.display = 'none'; 
 }
 
-window.addEventListener('popstate', (event) => {
-    const viewId = event.state?.viewId || (userId ? 'view-upload' : 'view-auth');
-    navigate(viewId, false);
-});
+function openSaveModal() { 
+    const el = get('modal-save');
+    if (el) el.style.display = 'flex'; 
+}
 
 // --- INITIALIZATION ---
+async function init() {
+    // Fail-Safe Timer: Hide loading screen if initialization takes too long
+    const initTimer = setTimeout(() => {
+        if (get('view-loading').classList.contains('active')) {
+            switchView('view-auth');
+        }
+    }, 4000);
 
-async function initSupabase() {
     try {
-        if (!window.supabase) throw new Error("Supabase library missing");
+        if (typeof supabase === 'undefined') {
+            throw new Error("Supabase library not found.");
+        }
+        
+        // Initialize the client using the provided URL and Key
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        // Listen for auth changes
-        supabase.auth.onAuthStateChange((event, session) => {
-            handleAuthChange(session);
+        // Authentication State Listener
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            clearTimeout(initTimer);
+            if (session) {
+                currentUser = session.user;
+                if (get('user-display')) get('user-display').textContent = currentUser.email;
+                fetchProjects();
+                switchView('view-upload');
+            } else {
+                currentUser = null;
+                switchView('view-auth');
+            }
         });
-        
-        // Check current session
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-            handleAuthChange(session);
-        } else {
-            navigate('view-auth');
+
+        // Check for immediate session
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session) {
+            clearTimeout(initTimer);
+            switchView('view-auth');
         }
 
-    } catch (error) {
-        console.error("Initialization error:", error);
-        const spinner = get('loading-spinner');
-        if (spinner) spinner.textContent = "❌ Initialization failed.";
-        // Fallback to auth if something goes wrong
-        setTimeout(() => navigate('view-auth'), 1000);
+    } catch (err) {
+        console.error("Initialization Failed:", err.message);
+        clearTimeout(initTimer);
+        switchView('view-auth');
     }
 }
 
-// --- AUTH LOGIC ---
-
-function handleAuthChange(session) {
-    if (session) {
-        userId = session.user.id;
-        loadProjects(); 
-        const welcomeSpan = document.querySelector('#view-upload .toolbar-group span');
-        if (welcomeSpan) welcomeSpan.textContent = `Welcome, ${session.user.email}!`;
-        navigate('view-upload'); 
-    } else {
-        userId = null;
-        navigate('view-auth'); 
-    }
-}
-
-window.toggleAuthMode = function() {
+// --- AUTH ACTIONS ---
+window.toggleAuthMode = () => {
     authMode = authMode === 'login' ? 'signup' : 'login';
-    if (authTitle) authTitle.textContent = authMode === 'login' ? 'Log In' : 'Sign Up';
-    if (loginBtn) loginBtn.style.display = authMode === 'login' ? 'flex' : 'none';
-    if (signupBtn) signupBtn.style.display = authMode === 'signup' ? 'flex' : 'none';
-    if (modeToggleText) modeToggleText.textContent = authMode === 'login' ? 'Sign Up' : 'Log In';
+    if (get('auth-title')) get('auth-title').textContent = authMode === 'login' ? 'Welcome Back' : 'Create Account';
+    if (get('login-btn')) get('login-btn').style.display = authMode === 'login' ? 'flex' : 'none';
+    if (get('signup-btn')) get('signup-btn').style.display = authMode === 'signup' ? 'flex' : 'none';
+    if (get('mode-toggle-text')) get('mode-toggle-text').textContent = authMode === 'login' ? 'Sign Up' : 'Log In';
 };
 
-window.handleAuthAction = async function() { 
-    const email = authEmail?.value;
-    const password = authPassword?.value;
+window.handleAuthAction = async () => {
+    const email = get('auth-email').value;
+    const password = get('auth-password').value;
+    const errorBox = get('auth-message');
+    
+    if (errorBox) errorBox.style.display = 'none';
     if (!email || !password) return;
 
-    const { error } = authMode === 'login' 
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
-
-    if (error) {
-        if (authMessage) {
-            authMessage.textContent = error.message;
-            authMessage.style.display = 'block';
+    try {
+        let result;
+        if (authMode === 'login') {
+            result = await supabaseClient.auth.signInWithPassword({ email, password });
+        } else {
+            result = await supabaseClient.auth.signUp({ email, password });
+        }
+        if (result.error) throw result.error;
+    } catch (err) {
+        if (errorBox) {
+            errorBox.textContent = err.message;
+            errorBox.style.display = 'block';
         }
     }
 };
 
-window.userSignOut = () => supabase.auth.signOut();
+window.userSignOut = () => supabaseClient.auth.signOut();
 
-// --- STORAGE & ZIP LOGIC ---
+// --- FILE HANDLING ---
+async function processFiles(files) {
+    for (const file of Array.from(files)) {
+        const name = file.name.toLowerCase();
+        let key = null;
+        if (name.endsWith('.html')) key = 'html';
+        else if (name.endsWith('.css')) key = 'css';
+        else if (name.endsWith('.js')) key = 'js';
 
-async function uploadProjectComponent(bucket, path, content, type) {
-    if (!content) return null; 
-    const { data, error } = await supabase.storage.from(bucket).upload(path, new Blob([content], { type }), { upsert: true });
-    if (error) throw error;
-    return data.path; 
+        if (key) {
+            const content = await file.text();
+            uploadedFilesMap.set(key, content);
+        }
+    }
+    updateUploadStatus();
 }
 
-async function downloadStorageFile(bucket, path) {
-    if (!path) return '';
-    const { data, error } = await supabase.storage.from(bucket).download(path);
-    return error ? '' : await data.text();
+function updateUploadStatus() {
+    const list = get('file-list-preview');
+    if (list) {
+        list.innerHTML = '';
+        uploadedFilesMap.forEach((v, k) => {
+            const item = document.createElement('div');
+            item.textContent = `✓ ${k.toUpperCase()} loaded`;
+            item.style.color = "var(--success)";
+            list.appendChild(item);
+        });
+    }
+
+    const hasHTML = uploadedFilesMap.has('html');
+    if (get('file-count-text')) get('file-count-text').textContent = `${uploadedFilesMap.size} files ready.`;
+    if (get('upload-actions')) get('upload-actions').style.display = hasHTML ? 'flex' : 'none';
 }
 
-window.downloadProjectAsZip = async function(projectId, projectName) {
-    const project = projectsList.find(p => p.id === projectId);
-    if (!project || typeof JSZip === 'undefined') return;
-
-    const zip = new JSZip();
-    const [h, c, j] = await Promise.all([
-        downloadStorageFile(BUCKET_NAME, project.htmlPath),
-        downloadStorageFile(BUCKET_NAME, project.cssPath),
-        downloadStorageFile(BUCKET_NAME, project.jsPath)
-    ]);
-
-    if (h) zip.file("index.html", h);
-    if (c) zip.file("style.css", c);
-    if (j) zip.file("script.js", j);
-
-    const blob = await zip.generateAsync({ type: "blob" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${projectName.replace(/ /g, '_')}.zip`;
-    link.click();
+window.resetUploadState = () => {
+    uploadedFilesMap.clear();
+    updateUploadStatus();
 };
 
-// --- DATA LOGIC ---
-
-function loadProjects() {
-    if (supabaseChannel) supabaseChannel.unsubscribe();
-    supabaseChannel = supabase
-        .channel(`projects_user_${userId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'projects', filter: `user_id=eq.${userId}` }, fetchProjects)
-        .subscribe();
-    fetchProjects(); 
-}
-
+// --- PROJECTS & STORAGE ---
 async function fetchProjects() {
-    const { data, error } = await supabase.from('projects').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (!currentUser) return;
+    const { data, error } = await supabaseClient
+        .from('projects')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+    
     if (error) return;
-
-    projectsList = data.map(p => ({
-        id: p.id, name: p.name, htmlPath: p.html, cssPath: p.css, jsPath: p.js,
-        created_at: { toDate: () => new Date(p.created_at) } 
-    }));
+    projectsList = data;
     renderProjectsList();
 }
 
 function renderProjectsList() {
-    if (!projectsListContainer) return;
-    projectsListContainer.innerHTML = '';
-    if (projectsList.length === 0) {
-        if (noProjectsMessage) noProjectsMessage.style.display = 'block';
-        return;
-    }
-    if (noProjectsMessage) noProjectsMessage.style.display = 'none';
+    const container = get('projects-list-grid');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    const emptyMsg = get('no-projects-msg');
+    if (emptyMsg) emptyMsg.style.display = projectsList.length === 0 ? 'block' : 'none';
 
     projectsList.forEach(p => {
         const card = document.createElement('div');
         card.className = 'project-card';
         card.innerHTML = `
             <h3>${p.name}</h3>
-            <p>बनाया गया: ${p.created_at.toDate().toLocaleDateString()}</p>
-            <div class="project-actions">
-                <button class="btn-base btn-primary" onclick="launchProject('${p.id}')">वेबसाइट देखें</button>
-                <button class="btn-base btn-secondary" onclick="openEditor('${p.id}')">कोड एडिट करें</button>
-                <button class="btn-base btn-secondary" onclick="downloadProjectAsZip('${p.id}', '${p.name}')">ज़िप डाउनलोड करें</button>
-                <button class="btn-base btn-danger" onclick="deleteProject('${p.id}', '${p.name}')">डिलीट करें</button>
+            <p style="font-size: 0.8rem; color: var(--text-dim);">बनाया गया: ${new Date(p.created_at).toLocaleDateString()}</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button class="btn-base btn-primary" onclick="launchProject('${p.id}')">Launch</button>
+                <button class="btn-base btn-secondary" onclick="openEditor('${p.id}')">Edit</button>
+                <button class="btn-base btn-danger" onclick="deleteProject('${p.id}')" style="grid-column: span 2">Delete</button>
             </div>
         `;
-        projectsListContainer.appendChild(card);
+        container.appendChild(card);
     });
 }
 
-// --- SAVE & EDIT ---
+window.saveProject = () => openSaveModal();
 
-window.saveProject = () => {
-    if (projectNameInput) projectNameInput.value = '';
-    if (saveModalOverlay) saveModalOverlay.style.display = 'flex';
-};
-
-window.cancelSave = () => { if (saveModalOverlay) saveModalOverlay.style.display = 'none'; };
-
-window.confirmSaveProject = async function() {
-    const name = projectNameInput?.value.trim();
+window.confirmSaveProject = async () => {
+    const name = get('project-name-input').value.trim();
     if (!name) return;
-    if (saveModalOverlay) saveModalOverlay.style.display = 'none';
+    closeModal('modal-save');
 
     try {
-        const base = `${userId}/${name}`;
+        const folder = `${currentUser.id}/${name.replace(/\s+/g, '_')}`;
+        
+        const upload = async (key, ext, type) => {
+            const content = uploadedFilesMap.get(key);
+            if (!content) return null;
+            const path = `${folder}/${key}.${ext}`;
+            const { error } = await supabaseClient.storage.from(BUCKET_NAME).upload(path, new Blob([content], { type }), { upsert: true });
+            if (error) throw error;
+            return path;
+        };
+
         const [h, c, j] = await Promise.all([
-            uploadProjectComponent(BUCKET_NAME, `${base}/index.html`, uploadedFilesMap.get('index.html'), 'text/html'),
-            uploadProjectComponent(BUCKET_NAME, `${base}/style.css`, uploadedFilesMap.get('style.css'), 'text/css'),
-            uploadProjectComponent(BUCKET_NAME, `${base}/script.js`, uploadedFilesMap.get('script.js'), 'application/javascript')
+            upload('html', 'html', 'text/html'),
+            upload('css', 'css', 'text/css'),
+            upload('js', 'js', 'application/javascript')
         ]);
 
-        await supabase.from('projects').insert([{ user_id: userId, name, html: h, css: c, js: j }]);
+        const { error: dbError } = await supabaseClient.from('projects').insert([{ 
+            user_id: currentUser.id, 
+            name: name, 
+            html: h, 
+            css: c, 
+            js: j 
+        }]);
+
+        if (dbError) throw dbError;
+
         resetUploadState();
-    } catch (e) { console.error(e); }
+        fetchProjects();
+    } catch (err) {
+        alert("Upload Error: " + err.message);
+    }
 };
 
-window.saveCodeChanges = async function() {
-    if (!currentProject.id) return;
-    const base = `${userId}/${currentProject.name}`;
-    try {
-        const [h, c, j] = await Promise.all([
-            uploadProjectComponent(BUCKET_NAME, currentProject.htmlPath || `${base}/index.html`, editorHtml.value, 'text/html'),
-            uploadProjectComponent(BUCKET_NAME, currentProject.cssPath || `${base}/style.css`, editorCss.value, 'text/css'),
-            uploadProjectComponent(BUCKET_NAME, currentProject.jsPath || `${base}/script.js`, editorJs.value, 'application/javascript')
-        ]);
-        await supabase.from('projects').update({ html: h, css: c, js: j }).eq('id', currentProject.id);
-        alert("Changes Saved!");
-    } catch (e) { alert("Error: " + e.message); }
+// --- EDITOR LOGIC ---
+window.setEditorTab = (tab) => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    ['edit-html', 'edit-css', 'edit-js'].forEach(id => {
+        const el = get(id);
+        if (el) el.classList.toggle('active', id === `edit-${tab}`);
+    });
 };
 
-// --- EDITOR & PREVIEW ---
+window.updatePreview = () => {
+    const h = get('edit-html').value;
+    const c = get('edit-css').value;
+    const j = get('edit-js').value;
+    const content = `<html><head><style>${c}</style></head><body>${h}<script>${j}<\/script></body></html>`;
+    const frame = get('preview-frame');
+    if (frame) frame.srcdoc = content;
+};
 
-window.openEditor = async function(id) {
-    navigate('view-workspace');
+window.openEditor = async (id) => {
+    switchView('view-workspace');
+    if (get('save-changes-btn')) get('save-changes-btn').style.display = id ? 'flex' : 'none';
+
     if (id) {
         const p = projectsList.find(x => x.id === id);
         currentProject = { ...p };
-        if (editorProjectName) editorProjectName.textContent = "Loading...";
-        const [h, c, j] = await Promise.all([
-            downloadStorageFile(BUCKET_NAME, p.htmlPath),
-            downloadStorageFile(BUCKET_NAME, p.cssPath),
-            downloadStorageFile(BUCKET_NAME, p.jsPath)
-        ]);
-        if (editorHtml) editorHtml.value = h;
-        if (editorCss) editorCss.value = c;
-        if (editorJs) editorJs.value = j;
-        if (editorProjectName) editorProjectName.textContent = `Editing: ${p.name}`;
+        if (get('workspace-project-name')) get('workspace-project-name').textContent = `Editing: ${p.name}`;
+        
+        const dl = async (path) => {
+            if (!path) return '';
+            const { data, error } = await supabaseClient.storage.from(BUCKET_NAME).download(path);
+            if (error) return '';
+            return await data.text();
+        };
+        
+        const [h, c, j] = await Promise.all([dl(p.html), dl(p.css), dl(p.js)]);
+        get('edit-html').value = h; 
+        get('edit-css').value = c; 
+        get('edit-js').value = j;
     } else {
-        if (editorHtml) editorHtml.value = uploadedFilesMap.get('index.html') || '';
-        if (editorCss) editorCss.value = uploadedFilesMap.get('style.css') || '';
-        if (editorJs) editorJs.value = uploadedFilesMap.get('script.js') || '';
-        if (editorProjectName) editorProjectName.textContent = "New Upload";
+        get('edit-html').value = uploadedFilesMap.get('html') || '';
+        get('edit-css').value = uploadedFilesMap.get('css') || '';
+        get('edit-js').value = uploadedFilesMap.get('js') || '';
+        if (get('workspace-project-name')) get('workspace-project-name').textContent = "Local Preview";
     }
     updatePreview();
 };
 
-window.updatePreview = function() {
-    if (!previewFrame) return;
-    const content = `<html><head><style>${editorCss?.value || ''}</style></head><body>${editorHtml?.value || ''}<script>${editorJs?.value || ''}<\/script></body></html>`;
-    previewFrame.srcdoc = content;
+window.saveCodeChanges = async () => {
+    if (!currentProject.id) return;
+    try {
+        const update = async (path, content, type) => {
+            if (!path) return;
+            const { error } = await supabaseClient.storage.from(BUCKET_NAME).upload(path, new Blob([content], { type }), { upsert: true });
+            if (error) throw error;
+        };
+        await Promise.all([
+            update(currentProject.html, get('edit-html').value, 'text/html'),
+            update(currentProject.css, get('edit-css').value, 'text/css'),
+            update(currentProject.js, get('edit-js').value, 'application/javascript')
+        ]);
+        alert("Changes saved successfully!");
+    } catch (err) { alert("Save Error: " + err.message); }
 };
 
-window.launchProject = async function(id) {
+window.launchProject = async (id) => {
     const p = projectsList.find(x => x.id === id);
-    navigate('view-fullscreen');
-    if (previewProjectName) previewProjectName.textContent = "Loading...";
-    const [h, c, j] = await Promise.all([
-        downloadStorageFile(BUCKET_NAME, p.htmlPath),
-        downloadStorageFile(BUCKET_NAME, p.cssPath),
-        downloadStorageFile(BUCKET_NAME, p.jsPath)
-    ]);
-    if (fullscreenFrame) fullscreenFrame.srcdoc = `<html><head><style>${c}</style></head><body>${h}<script>${j}<\/script></body></html>`;
-    if (previewProjectName) previewProjectName.textContent = p.name;
-};
-
-// --- DELETE ---
-
-window.deleteProject = (id, name) => {
-    projectIdToDelete = id;
-    if (deleteProjectNameDisplay) deleteProjectNameDisplay.textContent = name;
-    if (deleteModalOverlay) deleteModalOverlay.style.display = 'flex';
-};
-
-window.cancelDelete = () => { if (deleteModalOverlay) deleteModalOverlay.style.display = 'none'; };
-
-window.confirmDelete = async function() {
-    const id = projectIdToDelete;
-    if (deleteModalOverlay) deleteModalOverlay.style.display = 'none';
-    const p = projectsList.find(x => x.id === id);
-    const files = [p.htmlPath, p.cssPath, p.jsPath].filter(f => f);
+    if (!p) return;
+    switchView('view-fullscreen');
     
-    await supabase.storage.from(BUCKET_NAME).remove(files);
-    await supabase.from('projects').delete().eq('id', id);
-    fetchProjects();
+    const dl = async (path) => {
+        if (!path) return '';
+        const { data } = await supabaseClient.storage.from(BUCKET_NAME).download(path);
+        return await data.text();
+    };
+    
+    const [h, c, j] = await Promise.all([dl(p.html), dl(p.css), dl(p.js)]);
+    const frame = get('fullscreen-frame');
+    if (frame) frame.srcdoc = `<html><head><style>${c}</style></head><body>${h}<script>${j}<\/script></body></html>`;
 };
 
-// --- FILE HANDLING ---
+window.deleteProject = async (id) => {
+    if (!confirm("Permanently delete this project?")) return;
+    try {
+        const p = projectsList.find(x => x.id === id);
+        const files = [p.html, p.css, p.js].filter(f => f);
+        if (files.length > 0) await supabaseClient.storage.from(BUCKET_NAME).remove(files);
+        await supabaseClient.from('projects').delete().eq('id', id);
+        fetchProjects();
+    } catch (err) { alert("Delete Error: " + err.message); }
+};
 
-async function processFiles(input) {
-    let files = input instanceof DataTransferItemList 
-        ? Array.from(input).filter(i => i.kind === 'file').map(i => i.getAsFile())
-        : Array.from(input);
-
-    for (let f of files) {
-        if (!f || f.name.startsWith('.')) continue;
-        const n = f.name.toLowerCase();
-        let key = n.endsWith('.html') ? 'index.html' : n.endsWith('.css') ? 'style.css' : n.endsWith('.js') ? 'script.js' : null;
-        if (key) uploadedFilesMap.set(key, await f.text());
-    }
-    updateMiniList();
-}
-
-function updateMiniList() {
-    if (miniFileList) {
-        miniFileList.innerHTML = '';
-        uploadedFilesMap.forEach((v, k) => {
-            const li = document.createElement('li'); li.textContent = k; miniFileList.appendChild(li);
-        });
-    }
-    if (fileCountDisplay) fileCountDisplay.textContent = `${uploadedFilesMap.size} files found.`;
-    if (saveProjectBtn) saveProjectBtn.disabled = !uploadedFilesMap.has('index.html');
-}
-
-function resetUploadState() {
-    uploadedFilesMap.clear();
-    updateMiniList();
-}
-
-window.switchView = (id) => navigate(id);
-
-// --- START ---
-
+// --- INITIALIZATION ---
 window.onload = () => {
-    initSupabase();
-    if (fileInput) fileInput.onchange = (e) => processFiles(e.target.files);
-    if (folderInput) folderInput.onchange = (e) => processFiles(e.target.files);
-    if (dropZone) {
-        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); };
-        dropZone.ondragleave = () => dropZone.classList.remove('drag-active');
-        dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('drag-active'); processFiles(e.dataTransfer.items); };
+    init();
+    if (get('file-input')) get('file-input').onchange = (e) => processFiles(e.target.files);
+    if (get('folder-input')) get('folder-input').onchange = (e) => processFiles(e.target.files);
+    
+    const zone = get('drop-zone');
+    if (zone) {
+        zone.ondragover = (e) => { e.preventDefault(); zone.style.borderColor = 'var(--accent)'; };
+        zone.ondragleave = () => { zone.style.borderColor = 'var(--border)'; };
+        zone.ondrop = (e) => { 
+            e.preventDefault(); 
+            zone.style.borderColor = 'var(--border)'; 
+            if (e.dataTransfer.files) processFiles(e.dataTransfer.files); 
+        };
     }
-    editorTabs.forEach(t => t.onclick = () => {
-        editorTabs.forEach(x => x.classList.remove('active'));
-        t.classList.add('active');
-        const tab = t.dataset.tab;
-        [editorHtml, editorCss, editorJs].forEach(ed => {
-            if (ed) ed.classList.toggle('active', ed.dataset.tab === tab);
-        });
-    });
 };
+
+window.switchView = switchView;
+window.closeModal = closeModal;
+
