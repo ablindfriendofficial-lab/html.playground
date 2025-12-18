@@ -11,7 +11,7 @@
 <body>
     
     <!-- Loading Screen -->
-    <div id="view-loading" class="view-section active center-screen" style="z-index: 100; background: var(--bg-main);">
+    <div id="view-loading" class="view-section active center-screen">
         <div style="font-size: 1.5rem; color: var(--accent);">
             <span id="loading-spinner">...</span> Initializing App
         </div>
@@ -19,7 +19,7 @@
     
     <!-- Auth Screen -->
     <div id="view-auth" class="view-section center-screen">
-        <div class="action-box" id="auth-box">
+        <div class="action-box">
             <span class="icon-large">🔑</span>
             <h2 id="auth-title">Log In</h2>
             <input type="email" id="auth-email" placeholder="Email" style="width: 100%; padding: 10px; margin-bottom: 10px;">
@@ -32,50 +32,40 @@
     </div>
 
     <!-- Upload Screen -->
-    <div id="view-upload" class="view-section center-screen">
+    <div id="view-upload" class="view-section">
         <header class="toolbar">
             <div class="toolbar-group"><span>Welcome!</span></div>
             <div class="toolbar-group"><button class="btn-base btn-danger" onclick="userSignOut()">Log Out</button></div>
         </header>
 
-        <div class="action-box" id="drop-zone">
-            <span class="icon-large">📂</span>
-            <h2>Upload Project Files</h2>
-            
-            <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
-                <label for="file-input" class="btn-base btn-primary" style="justify-content: center;">+ Add Files</label>
-                <label for="folder-input" class="btn-base btn-secondary" style="justify-content: center;">+ Add Folder</label>
-            </div>
-
-            <!-- List of uploaded files -->
-            <ul id="mini-file-list" style="text-align: left; width: 100%; margin-top: 10px; list-style: none; padding: 0;"></ul>
-            <div id="file-count" style="color: var(--text-dim); font-size: 0.8rem;"></div>
-
-            <!-- SMART WARNING BOX (Hidden by default) -->
-            <div id="error-display" style="margin-top: 15px; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); padding: 10px; border-radius: 8px; display: none;">
-                <strong style="color: var(--warning);">⚠️ Still Missing:</strong>
-                <ul id="missing-list" style="padding-left: 20px; color: var(--text-dim); margin-top: 5px;"></ul>
-            </div>
-            
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px; width: 100%;">
+        <div class="workspace-body center-screen">
+            <div class="action-box" id="drop-zone">
+                <span class="icon-large">📂</span>
+                <h2>Upload Project Files</h2>
                 
-                <!-- Buttons are PERMANENTLY visible/enabled -->
-                <button id="open-editor-btn" class="btn-base btn-primary" onclick="openEditor(null)">
-                    👁️ Preview / Edit Code
-                </button>
-                
-                <button id="save-project-btn" class="btn-base btn-success" onclick="saveProject()">
-                    💾 Save to Supabase
-                </button>
-
-                <div style="display: flex; gap: 10px; width: 100%; margin-top: 10px;">
-                    <button class="btn-base btn-secondary" onclick="switchView('view-projects')" style="flex: 1;">See Saved</button>
-                    <button class="btn-base btn-danger" onclick="resetUploadState()" style="flex: 1;">Clear</button>
+                <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                    <label for="file-input" class="btn-base btn-primary" style="justify-content: center;">+ Add Files</label>
+                    <label for="folder-input" class="btn-base btn-secondary" style="justify-content: center;">+ Add Folder</label>
                 </div>
-            </div>
 
-            <input type="file" id="file-input" multiple style="display: none;">
-            <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
+                <ul id="mini-file-list" style="text-align: left; width: 100%; margin-top: 10px; list-style: none; padding: 0;"></ul>
+                <div id="file-count" style="color: var(--text-dim); font-size: 0.8rem;"></div>
+
+                <div id="error-display" style="margin-top: 15px; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); padding: 10px; border-radius: 8px; display: none;">
+                    <strong style="color: var(--warning);">⚠️ Still Missing:</strong>
+                    <ul id="missing-list" style="padding-left: 20px; color: var(--text-dim); margin-top: 5px;"></ul>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px; width: 100%;">
+                    <button id="open-editor-btn" class="btn-base btn-primary" onclick="openEditor(null)">👁️ Preview / Edit Code</button>
+                    <button id="save-project-btn" class="btn-base btn-success" onclick="saveProject()">💾 Save to Supabase</button>
+                    <button class="btn-base btn-secondary" onclick="switchView('view-projects')">See Saved Projects</button>
+                    <button class="btn-base btn-danger" onclick="resetUploadState()">Clear Files</button>
+                </div>
+
+                <input type="file" id="file-input" multiple style="display: none;">
+                <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
+            </div>
         </div>
     </div>
 
@@ -85,33 +75,67 @@
             <button class="btn-base btn-secondary" onclick="switchView('view-upload')">← Back</button>
             <span>My Projects</span>
         </header>
-        <div class="workspace-body center-screen"><div id="projects-list"></div></div>
+        <div class="workspace-body" style="display: block; overflow-y: auto;">
+            <div id="no-projects-message" style="text-align: center; margin-top: 40px; color: var(--text-dim); display: none;">No projects found.</div>
+            <div id="projects-list"></div>
+        </div>
     </div>
 
-    <!-- Workspace/Preview View -->
+    <!-- Editor/Preview Workspace -->
     <div id="view-workspace" class="view-section">
         <header class="toolbar">
             <button class="btn-base btn-secondary" onclick="switchView('view-upload')">← Back</button>
-            <span>Preview</span>
-            <button class="btn-base btn-primary" onclick="refreshPreview()">Reload</button>
+            <span id="editor-project-name">Editing</span>
+            <button class="btn-base btn-success" onclick="saveCodeChanges()">💾 Save Changes</button>
         </header>
-        <div class="workspace-body"><iframe id="preview-frame" style="width:100%; height:100%; border:none;"></iframe></div>
-    </div>
-
-    <!-- Save Modal -->
-    <div id="save-modal-overlay" class="view-section center-screen" style="z-index: 1000; background: rgba(0,0,0,0.8); display: none;">
-        <div class="action-box">
-            <h3>Name Project</h3>
-            <input type="text" id="project-name-input" style="width: 100%; padding: 10px; margin: 10px 0;">
-            <div style="display: flex; gap: 10px;">
-                <button class="btn-base btn-secondary" onclick="cancelSave()">Cancel</button>
-                <button class="btn-base btn-success" onclick="confirmSaveProject()">Save</button>
+        <div class="editor-container">
+            <div class="editor-tabs">
+                <button class="editor-tab active" data-tab="html">HTML</button>
+                <button class="editor-tab" data-tab="css">CSS</button>
+                <button class="editor-tab" data-tab="js">JS</button>
+            </div>
+            <div class="editor-content">
+                <textarea id="editor-html" class="active" data-tab="html" spellcheck="false"></textarea>
+                <textarea id="editor-css" data-tab="css" spellcheck="false"></textarea>
+                <textarea id="editor-js" data-tab="js" spellcheck="false"></textarea>
+            </div>
+            <div style="height: 40%; border-top: 1px solid var(--border); background: white;">
+                <iframe id="preview-frame" style="width: 100%; height: 100%; border: none;"></iframe>
             </div>
         </div>
     </div>
 
-    <script src="script.js"></script> 
+    <!-- Fullscreen Launch View -->
+    <div id="view-fullscreen" class="view-section">
+        <button class="exit-btn" onclick="switchView('view-projects')">Exit Preview</button>
+        <div id="preview-project-name" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 4px; z-index: 10;"></div>
+        <iframe id="fullscreen-frame" style="width: 100%; height: 100%; border: none; background: white;"></iframe>
+    </div>
+
+    <!-- Modals -->
+    <div id="save-modal-overlay" class="view-section center-screen" style="z-index: 1000; background: rgba(0,0,0,0.8);">
+        <div class="action-box">
+            <h3>Name Project</h3>
+            <input type="text" id="project-name-input" placeholder="Project Name" style="width: 100%; padding: 12px; margin: 15px 0; border-radius: 6px; border: 1px solid var(--border); background: #111; color: white;">
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn-base btn-secondary" onclick="cancelSave()" style="flex: 1; justify-content: center;">Cancel</button>
+                <button class="btn-base btn-success" onclick="confirmSaveProject()" style="flex: 1; justify-content: center;">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-modal-overlay" class="view-section center-screen" style="z-index: 1000; background: rgba(0,0,0,0.8);">
+        <div class="action-box">
+            <span class="icon-large">🗑️</span>
+            <h3>Delete Project?</h3>
+            <p id="delete-project-name" style="margin: 10px 0; color: var(--text-dim);"></p>
+            <div style="display: flex; gap: 10px; width: 100%; margin-top: 15px;">
+                <button class="btn-base btn-secondary" onclick="cancelDelete()" style="flex: 1; justify-content: center;">Cancel</button>
+                <button class="btn-base btn-danger" onclick="confirmDelete()" style="flex: 1; justify-content: center;">Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
-
 
